@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V4.3 Stable Fix)
+# APLIKASI: SN TRACKER PRO (V4.4 Sidebar Polish)
 # ENGINE: Google Firestore
-# FIX: Mengatasi Error JSON Serialization di Dashboard Stok
+# UPDATE: Tombol Logout Full Width & Posisi Ergonomis
 # ==========================================
 
 import streamlit as st
@@ -64,6 +64,14 @@ st.markdown("""
     div.stButton > button[kind="primary"]:hover {
         background-color: #007bb5;
     }
+    /* Tombol Logout Khusus (Merah Tipis) */
+    div.stButton > button[data-testid="baseButton-secondary"] {
+        border-color: #ff4b4b; color: #ff4b4b;
+    }
+    div.stButton > button[data-testid="baseButton-secondary"]:hover {
+        background-color: #fff0f0; border-color: #ff4b4b; color: #ff4b4b;
+    }
+    
     .big-price { 
         font-size: 28px; font-weight: 800; color: var(--brand-yellow); 
         margin-bottom: 5px; display: block; 
@@ -106,88 +114,49 @@ def get_history_df():
     return pd.DataFrame(data)
 
 def get_import_logs():
-    """Mengambil riwayat import barang"""
     docs = db.collection('import_logs').order_by('timestamp', direction=firestore.Query.DESCENDING).limit(20).stream()
     data = [{'id': doc.id, **doc.to_dict()} for doc in docs]
     return data
 
 def log_import_activity(user, method, items_df):
-    """Mencatat log import ke database agar bisa dicek ulang"""
     log_ref = db.collection('import_logs').document()
     items_list = items_df[['brand', 'sku', 'sn', 'price']].to_dict('records')
     log_data = {
-        'log_id': log_ref.id,
-        'timestamp': datetime.now(),
-        'user': user,
-        'method': method,
-        'total_items': len(items_df),
-        'items_detail': items_list
+        'log_id': log_ref.id, 'timestamp': datetime.now(), 'user': user,
+        'method': method, 'total_items': len(items_df), 'items_detail': items_list
     }
     log_ref.set(log_data)
 
 def add_stock_batch(user, brand, sku, price, sn_list):
-    """Input stok manual + Logging"""
-    batch = db.batch()
-    count = 0
-    total_added = 0
-    log_items = []
-    
+    batch = db.batch(); count = 0; total_added = 0; log_items = []
     for sn in sn_list:
         sn = sn.strip()
         if sn:
             doc_ref = db.collection('inventory').document(sn)
-            batch.set(doc_ref, {
-                'brand': brand, 'sku': sku, 'price': int(price),
-                'sn': sn, 'status': 'Ready', 'created_at': datetime.now()
-            })
+            batch.set(doc_ref, {'brand': brand, 'sku': sku, 'price': int(price), 'sn': sn, 'status': 'Ready', 'created_at': datetime.now()})
             log_items.append({'brand': brand, 'sku': sku, 'sn': sn, 'price': int(price)})
             count += 1
-            if count >= 400:
-                batch.commit(); batch = db.batch(); total_added += count; count = 0
-                
+            if count >= 400: batch.commit(); batch = db.batch(); total_added += count; count = 0
     if count > 0: batch.commit(); total_added += count
-    
-    if total_added > 0:
-        df_log = pd.DataFrame(log_items)
-        log_import_activity(user, "Manual Input", df_log)
-        
+    if total_added > 0: log_import_activity(user, "Manual Input", pd.DataFrame(log_items))
     return total_added
 
 def import_stock_from_df(user, df):
-    """Import stok Excel + Logging"""
     df.columns = [c.lower().strip() for c in df.columns]
     required_cols = ['brand', 'sku', 'price', 'sn']
     missing = [c for c in required_cols if c not in df.columns]
     if missing: return False, f"Kolom hilang: {', '.join(missing)}"
-    
-    batch = db.batch(); count = 0; total_imported = 0
-    progress_bar = st.progress(0); total_rows = len(df)
-    log_items = []
-    
+    batch = db.batch(); count = 0; total_imported = 0; progress_bar = st.progress(0); total_rows = len(df); log_items = []
     for index, row in df.iterrows():
         sn_val = str(row['sn']).strip()
         if not sn_val or sn_val.lower() == 'nan': continue
-        
         doc_ref = db.collection('inventory').document(sn_val)
-        item_data = {
-            'brand': str(row['brand']), 'sku': str(row['sku']),
-            'price': int(row['price']), 'sn': sn_val,
-            'status': 'Ready', 'created_at': datetime.now()
-        }
-        batch.set(doc_ref, item_data)
-        log_items.append(item_data)
-        count += 1
-        if count >= 400:
-            batch.commit(); batch = db.batch(); total_imported += count; count = 0
-            progress_bar.progress(min(index / total_rows, 1.0))
-            
+        item_data = {'brand': str(row['brand']), 'sku': str(row['sku']), 'price': int(row['price']), 'sn': sn_val, 'status': 'Ready', 'created_at': datetime.now()}
+        batch.set(doc_ref, item_data); log_items.append(item_data); count += 1
+        if count >= 400: batch.commit(); batch = db.batch(); total_imported += count; count = 0; progress_bar.progress(min(index / total_rows, 1.0))
     if count > 0: batch.commit(); total_imported += count
     progress_bar.empty()
-    
-    if total_imported > 0:
-        df_log = pd.DataFrame(log_items)
-        log_import_activity(user, "Excel Import", df_log)
-        
+    if total_imported > 0: log_import_activity(user, "Excel Import", pd.DataFrame(log_items))
     return True, f"Import {total_imported} Data!"
 
 def update_stock_price(sn, new_price):
@@ -198,31 +167,20 @@ def delete_stock(sn):
 
 def delete_collection_batch(coll_name, batch_size=100):
     docs = db.collection(coll_name).limit(batch_size).stream()
-    deleted = 0
-    batch = db.batch()
-    for doc in docs:
-        batch.delete(doc.reference)
-        deleted += 1
-    if deleted > 0:
-        batch.commit(); return deleted + delete_collection_batch(coll_name, batch_size)
+    deleted = 0; batch = db.batch()
+    for doc in docs: batch.delete(doc.reference); deleted += 1
+    if deleted > 0: batch.commit(); return deleted + delete_collection_batch(coll_name, batch_size)
     return 0
 
 def process_checkout(user, cart_items):
-    batch = db.batch()
-    total = sum(item['price'] for item in cart_items)
-    sn_sold = [item['sn'] for item in cart_items]
+    batch = db.batch(); total = sum(item['price'] for item in cart_items); sn_sold = [item['sn'] for item in cart_items]
     for item in cart_items:
         doc_ref = db.collection('inventory').document(item['sn'])
         batch.update(doc_ref, {'status': 'Sold', 'sold_at': datetime.now()})
     trx_ref = db.collection('transactions').document()
     trx_id = trx_ref.id[:8].upper()
-    batch.set(trx_ref, {
-        'trx_id': trx_id, 'timestamp': datetime.now(),
-        'user': user, 'items': sn_sold, 'item_details': cart_items,
-        'total_bill': total, 'items_count': len(sn_sold)
-    })
-    batch.commit()
-    return trx_id, total
+    batch.set(trx_ref, {'trx_id': trx_id, 'timestamp': datetime.now(), 'user': user, 'items': sn_sold, 'item_details': cart_items, 'total_bill': total, 'items_count': len(sn_sold)})
+    batch.commit(); return trx_id, total
 
 # --- 6. LOGIN ---
 def login_page():
@@ -231,7 +189,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v4.3 Stable", unsafe_allow_html=True)
+            st.caption("v4.4 Stable", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -247,17 +205,30 @@ if not st.session_state.logged_in: login_page(); st.stop()
 df_master = get_inventory_df()
 with st.sidebar:
     st.markdown("### 📦 SN Tracker")
-    st.caption(f"User: **{st.session_state.user_role}**")
+    st.markdown(f"User: **{st.session_state.user_role}**")
+    
+    # Navigasi
     menu_items = ["🛒 Kasir", "📦 Gudang", "🔧 Admin Tools"] if st.session_state.user_role == "ADMIN" else ["🛒 Kasir", "📦 Gudang"]
-    menu = st.radio("Navigasi", menu_items, label_visibility="collapsed")
+    menu = st.radio("Menu Utama", menu_items, label_visibility="collapsed")
+    
     st.divider()
+    
+    # Alert Stok
     if not df_master.empty:
         stok_ready = df_master[df_master['status'] == 'Ready']
         stok_count = stok_ready.groupby(['brand', 'sku']).size().reset_index(name='jumlah')
         stok_tipis = stok_count[stok_count['jumlah'] < 5]
         if not stok_tipis.empty: st.markdown(f"<div class='alert-stock'>🔔 {len(stok_tipis)} Item Stok Menipis</div>", unsafe_allow_html=True)
+    
+    # SPACER AGAR LOGOUT DI BAWAH (Visual Trick)
+    st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
-    if st.button("🚪 Logout"): st.session_state.logged_in = False; st.session_state.keranjang = []; st.rerun()
+    
+    # TOMBOL LOGOUT FULL WIDTH
+    if st.button("🚪 KELUAR APLIKASI", use_container_width=True): 
+        st.session_state.logged_in = False
+        st.session_state.keranjang = []
+        st.rerun()
 
 # --- 8. KONTEN UTAMA ---
 
@@ -265,7 +236,6 @@ with st.sidebar:
 if menu == "🛒 Kasir":
     st.title("🛒 Kasir")
     c_product, c_cart = st.columns([1.8, 1])
-    
     with c_product:
         st.markdown('<div class="step-header">1️⃣ Cari & Scan Barang</div>', unsafe_allow_html=True)
         if not df_master.empty:
@@ -273,11 +243,7 @@ if menu == "🛒 Kasir":
             if not df_ready.empty:
                 df_ready['display'] = "[" + df_ready['brand'] + "] " + df_ready['sku'] + " (" + df_ready['price'].apply(format_rp) + ")"
                 search_options = sorted(df_ready['display'].unique())
-                pilih_barang = st.selectbox(
-                    "🔍 Cari Produk (Scan Barcode / Ketik):", 
-                    ["-- Pilih Produk --"] + search_options, 
-                    key=f"sb_{st.session_state.search_key}",
-                )
+                pilih_barang = st.selectbox("🔍 Cari Produk (Scan Barcode / Ketik):", ["-- Pilih Produk --"] + search_options, key=f"sb_{st.session_state.search_key}")
                 if pilih_barang != "-- Pilih Produk --":
                     rows = df_ready[df_ready['display'] == pilih_barang]
                     if not rows.empty:
@@ -337,7 +303,6 @@ elif menu == "📦 Gudang":
     st.title("📦 Manajemen Gudang")
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
-    # TAB 1: DASHBOARD STOK
     with tabs[0]:
         st.subheader("Ringkasan Stok Gudang")
         if not df_master.empty:
@@ -349,29 +314,12 @@ elif menu == "📦 Gudang":
                 c1.metric("Total Unit Barang", f"{len(df_ready)} Unit")
                 c2.metric("Total Nilai Aset", format_rp(df_ready['price'].sum()))
                 c3.metric("Jenis Produk (SKU)", f"{len(stok_rekap)} Jenis")
-                
-                # --- FIX: Convert NumPy Int ke Python Int ---
                 max_stok_val = int(stok_rekap['Total Stok'].max()) if not stok_rekap.empty else 100
-                
                 st.markdown("### Tabel Rekapitulasi")
-                st.dataframe(
-                    stok_rekap, 
-                    use_container_width=True,
-                    column_config={
-                        "price": st.column_config.NumberColumn("Harga Satuan", format="Rp %d"),
-                        "Total Stok": st.column_config.ProgressColumn(
-                            "Ketersediaan", 
-                            format="%d", 
-                            min_value=0, 
-                            max_value=max_stok_val
-                        )
-                    },
-                    hide_index=True
-                )
+                st.dataframe(stok_rekap, use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga Satuan", format="Rp %d"), "Total Stok": st.column_config.ProgressColumn("Ketersediaan", format="%d", min_value=0, max_value=max_stok_val)}, hide_index=True)
             else: st.info("Gudang Kosong (Belum ada stok Ready).")
         else: st.info("Database Kosong.")
 
-    # TAB 2: CEK DETAIL
     with tabs[1]:
         st.subheader("Daftar Serial Number (Detail)")
         if not df_master.empty:
@@ -381,20 +329,16 @@ elif menu == "📦 Gudang":
             dv = df_master.copy()
             if q: dv = dv[dv['sku'].str.contains(q, case=False) | dv['sn'].str.contains(q, case=False)]
             if fb != "All": dv = dv[dv['brand'] == fb]
-            def highlight_status(val):
-                color = '#d4edda' if val == 'Ready' else '#f8d7da'
-                return f'background-color: {color}'
+            def highlight_status(val): return f'background-color: {"#d4edda" if val == "Ready" else "#f8d7da"}'
             st.dataframe(dv[['sn','sku','brand','price','status']].style.applymap(highlight_status, subset=['status']), use_container_width=True)
 
-    # TAB 3: INPUT BARANG
     with tabs[2]:
         if st.session_state.user_role == "ADMIN":
             st.subheader("Input Stok Baru")
             mode = st.radio("Metode Input:", ["Manual Input", "Upload Excel"], horizontal=True)
             if mode == "Manual Input":
                 with st.form("in"):
-                    c1,c2,c3 = st.columns(3)
-                    b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
+                    c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
                     sn = st.text_area("List SN (Pisahkan dengan Enter):", height=150)
                     if st.form_submit_button("SIMPAN KE DATABASE", type="primary"):
                         if b and s and sn: 
@@ -410,24 +354,19 @@ elif menu == "📦 Gudang":
                     else: st.error(msg)
         else: st.warning("Akses Input Khusus Admin.")
 
-    # TAB 4: RIWAYAT IMPORT
     with tabs[3]:
         st.subheader("📜 Log Riwayat Import")
         if st.session_state.user_role == "ADMIN":
             logs = get_import_logs()
             if logs:
                 for log in logs:
-                    ts = log['timestamp']
-                    ts_str = ts.strftime("%d %b %Y, %H:%M") if isinstance(ts, datetime) else "-"
+                    ts = log['timestamp']; ts_str = ts.strftime("%d %b %Y, %H:%M") if isinstance(ts, datetime) else "-"
                     with st.expander(f"{ts_str} | {log['method']} | Oleh: {log['user']} ({log['total_items']} Item)"):
-                        if 'items_detail' in log and log['items_detail']:
-                            df_detail = pd.DataFrame(log['items_detail'])
-                            st.dataframe(df_detail, use_container_width=True)
+                        if 'items_detail' in log and log['items_detail']: st.dataframe(pd.DataFrame(log['items_detail']), use_container_width=True)
                         else: st.write("Detail tidak tersedia.")
             else: st.info("Belum ada riwayat import.")
         else: st.warning("Akses Khusus Admin.")
 
-    # TAB 5: EDIT/HAPUS
     with tabs[4]:
         if st.session_state.user_role == "ADMIN":
             st.subheader("Koreksi Data")
@@ -490,8 +429,7 @@ elif menu == "🔧 Admin Tools":
                 df_hist_all = get_history_df()
                 if not df_hist_all.empty:
                     df_clean = df_hist_all.copy()
-                    if 'timestamp' in df_clean.columns:
-                        df_clean['waktu_lokal'] = pd.to_datetime(df_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
+                    if 'timestamp' in df_clean.columns: df_clean['waktu_lokal'] = pd.to_datetime(df_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
                     else: df_clean['waktu_lokal'] = "-"
                     target_cols = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
                     for col in target_cols:
