@@ -167,7 +167,8 @@ if menu == "Dashboard":
     df_hist = get_history_df()
     if not df_hist.empty:
         # Konversi waktu ke WIB (UTC+7)
-        df_hist['waktu_lokal'] = pd.to_datetime(df_hist['timestamp']).dt.tz_localize('UTC').dt.tz_convert('Asia/Jakarta')
+        # PERBAIKAN: Hapus .dt.tz_localize('UTC') karena data Firestore sudah timezone-aware
+        df_hist['waktu_lokal'] = pd.to_datetime(df_hist['timestamp']).dt.tz_convert('Asia/Jakarta')
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Omzet", f"Rp {df_hist['total_bill'].sum():,.0f}")
