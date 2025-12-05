@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V3.2 Maintenance)
+# APLIKASI: SN TRACKER PRO (V3.4 Final)
 # ENGINE: Google Firestore
-# FITUR BARU: Backup Data & Reset dengan PIN Aman
+# UPDATE: Sorting SN di Menu Kasir (Berurutan)
 # ==========================================
 
 import streamlit as st
@@ -54,20 +54,47 @@ st.markdown("""
     :root {
         --brand-blue: #0095DA;
         --brand-yellow: #F99D1C;
+        --brand-grey: #f4f4f4;
     }
+    
+    /* Tombol Primary */
     div.stButton > button[kind="primary"] {
         background-color: var(--brand-blue); border: none; color: white; font-weight: bold;
+        padding: 10px 24px; border-radius: 8px; font-size: 16px;
     }
     div.stButton > button[kind="primary"]:hover {
-        background-color: #007bb5;
+        background-color: #007bb5; box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    .stCode { font-family: 'Courier New', monospace; font-weight: bold; border-radius: 6px; }
-    .big-price { font-size: 28px; font-weight: 800; color: var(--brand-yellow); margin-bottom: 5px; display: block; }
-    .step-card {
-        padding: 15px; border-radius: 10px; border-left: 5px solid var(--brand-blue);
-        background-color: rgba(0, 149, 218, 0.05); margin-bottom: 20px;
+    
+    /* Product Card (Kotak Produk di Kiri) */
+    .product-card {
+        background-color: white; padding: 25px; border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e0e0e0;
+        margin-top: 10px;
     }
-    .step-title { color: var(--brand-blue); font-weight: 700; font-size: 18px; margin-bottom: 10px; }
+    
+    /* Receipt Card (Kotak Keranjang di Kanan) */
+    .receipt-card {
+        background-color: white; padding: 20px; border-radius: 10px;
+        border: 2px dashed #d1d5db; /* Garis putus-putus ala struk */
+    }
+    
+    /* Typography */
+    .brand-tag {
+        background-color: rgba(0, 149, 218, 0.1); color: var(--brand-blue);
+        padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;
+    }
+    .sku-title { font-size: 24px; font-weight: 800; color: #333; margin: 10px 0 5px 0; }
+    .price-tag { font-size: 32px; font-weight: 900; color: var(--brand-yellow); }
+    
+    .total-section {
+        background-color: var(--brand-grey); padding: 15px; border-radius: 10px;
+        margin-top: 20px; text-align: right;
+    }
+    .total-label { font-size: 14px; color: #666; }
+    .total-value { font-size: 28px; font-weight: bold; color: var(--brand-blue); }
+
+    .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
     .alert-stock {
         background-color: rgba(255, 0, 0, 0.1); color: #e53935; padding: 10px; 
         border-radius: 5px; border: 1px solid #ef9a9a; margin-bottom: 10px; font-weight: bold; font-size: 14px;
@@ -139,17 +166,14 @@ def delete_stock(sn):
     db.collection('inventory').document(sn).delete()
 
 def delete_collection_batch(coll_name, batch_size=100):
-    """Menghapus satu koleksi penuh secara aman"""
     docs = db.collection(coll_name).limit(batch_size).stream()
     deleted = 0
     batch = db.batch()
     for doc in docs:
         batch.delete(doc.reference)
         deleted += 1
-    
     if deleted > 0:
         batch.commit()
-        # Rekursif sampai habis
         return deleted + delete_collection_batch(coll_name, batch_size)
     return 0
 
@@ -179,7 +203,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("v3.2 Maintenance Tools", unsafe_allow_html=True)
+            st.caption("v3.4 Final Release", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -211,55 +235,105 @@ with st.sidebar:
 
 # === KASIR ===
 if menu == "🛒 Transaksi":
-    st.title("🛒 Kasir")
-    c_kiri, c_kanan = st.columns([1.6, 1])
-    with c_kiri:
-        st.markdown('<div class="step-card"><div class="step-title">1️⃣ Cari & Scan Barang</div></div>', unsafe_allow_html=True)
+    st.title("🛒 Kasir Point of Sales")
+    
+    # Layout 2:1 (Lebih lebar di produk)
+    c_product, c_cart = st.columns([2, 1])
+    
+    with c_product:
+        # Search Bar yang mencolok
         if not df_master.empty:
             df_ready = df_master[df_master['status'] == 'Ready']
             if not df_ready.empty:
                 df_ready['display'] = "[" + df_ready['brand'] + "] " + df_ready['sku'] + " (" + df_ready['price'].apply(format_rp) + ")"
                 search_options = sorted(df_ready['display'].unique())
-                pilih_barang = st.selectbox("🔍 Scan/Ketik Barang:", ["-- Pilih --"] + search_options, key=f"sb_{st.session_state.search_key}")
                 
-                if pilih_barang != "-- Pilih --":
+                pilih_barang = st.selectbox(
+                    "🔍 Cari Produk (Scan Barcode / Ketik):", 
+                    ["-- Pilih Produk --"] + search_options, 
+                    key=f"sb_{st.session_state.search_key}",
+                    label_visibility="collapsed",
+                    placeholder="🔍 Klik disini untuk scan atau cari barang..."
+                )
+                
+                if pilih_barang != "-- Pilih Produk --":
+                    # TAMPILAN PRODUCT CARD
                     rows = df_ready[df_ready['display'] == pilih_barang]
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
-                        st.markdown(f"<span class='big-price'>{format_rp(item['price'])}</span>", unsafe_allow_html=True)
-                        st.caption(f"{item['brand']} | {sku}")
+                        
+                        # Kotak Detail Produk
+                        st.markdown(f"""
+                        <div class="product-card">
+                            <span class="brand-tag">{item['brand']}</span>
+                            <div class="sku-title">{sku}</div>
+                            <div class="price-tag">{format_rp(item['price'])}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Logika SN
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
-                        st.markdown("---")
-                        c1, c2 = st.columns([2,1])
-                        with c1: 
-                            st.write(f"Stok: **{len(avail)}**")
-                            p_sn = st.multiselect("SN:", avail['sn'].tolist(), label_visibility="collapsed", placeholder="Pilih SN")
-                        with c2:
-                            if st.button("➕ ADD", type="primary", use_container_width=True):
+                        # Area Input SN
+                        st.markdown("### 🔢 Pilih Serial Number")
+                        col_sn_input, col_sn_btn = st.columns([3, 1])
+                        
+                        with col_sn_input:
+                            # MODIFIKASI: SORTING SN DI SINI (sorted())
+                            sn_list_sorted = sorted(avail['sn'].tolist())
+                            p_sn = st.multiselect("Serial Number:", sn_list_sorted, label_visibility="collapsed", placeholder="Pilih satu atau banyak SN")
+                            st.caption(f"Stok Tersedia: {len(avail)} Unit")
+                        
+                        with col_sn_btn:
+                            if st.button("TAMBAH ➕", type="primary", use_container_width=True):
                                 if p_sn:
                                     for s in p_sn: st.session_state.keranjang.append(avail[avail['sn']==s].iloc[0].to_dict())
                                     st.session_state.search_key += 1; st.toast("Masuk Keranjang!", icon="🛒"); time.sleep(0.1); st.rerun()
-            else: st.warning("Stok Gudang Kosong")
-        else: st.warning("Database Kosong")
+                                else:
+                                    st.warning("Pilih SN dulu")
+                    else:
+                        st.warning("Barang tidak ditemukan.")
+            else:
+                st.warning("Stok Gudang Kosong (Semua Sold/Tidak ada data).")
+        else:
+            st.warning("Database Kosong.")
 
-    with c_kanan:
-        st.markdown('<div class="step-card"><div class="step-title">2️⃣ Keranjang</div></div>', unsafe_allow_html=True)
-        with st.container(border=True):
+    with c_cart:
+        st.markdown("### 🧾 Keranjang Belanja")
+        # Tampilan Receipt
+        with st.container(border=True): # Border putus-putus lewat CSS
+            st.markdown('<div class="receipt-card">', unsafe_allow_html=True)
             if st.session_state.keranjang:
                 tot = 0
-                for x in st.session_state.keranjang:
+                for i, x in enumerate(st.session_state.keranjang):
                     tot += x['price']
-                    c1, c2 = st.columns([2,1]); c1.write(f"**{x['sku']}**"); c2.code(x['sn'])
-                st.markdown(f"<div style='text-align:right'>Total<br><span class='big-price'>{format_rp(tot)}</span></div>", unsafe_allow_html=True)
-                if st.button("✅ BAYAR", type="primary", use_container_width=True):
+                    c1, c2 = st.columns([2,1])
+                    c1.markdown(f"**{x['sku']}**\n<span style='font-size:12px;color:#666'>{x['sn']}</span>", unsafe_allow_html=True)
+                    c2.markdown(f"<div style='text-align:right'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
+                    st.divider()
+                
+                # Total Section
+                st.markdown(f"""
+                <div class="total-section">
+                    <div class="total-label">Total Tagihan</div>
+                    <div class="total-value">{format_rp(tot)}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
                     st.session_state.keranjang = []; st.balloons(); st.success("Transaksi Sukses!")
-                    with st.expander("Struk", expanded=True):
-                        st.write(f"ID: {tid}"); st.write(f"Total: {format_rp(tbil)}")
-                if st.button("🗑️ Hapus"): st.session_state.keranjang = []; st.rerun()
-            else: st.info("Kosong")
+                    with st.expander("📄 Struk Digital", expanded=True):
+                        st.code(f"ID: {tid}\nTotal: {format_rp(tbil)}")
+                
+                if st.button("❌ Batal / Hapus", use_container_width=True):
+                    st.session_state.keranjang = []; st.rerun()
+            else:
+                st.info("Keranjang Kosong")
+                st.caption("Scan barang di sebelah kiri untuk memulai.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # === GUDANG ===
 elif menu == "📦 Gudang":
@@ -305,103 +379,77 @@ elif menu == "📦 Gudang":
                             if st.button("Hapus", key=f"d{r['sn']}", type="primary"): delete_stock(r['sn']); st.rerun()
 
 # === ADMIN TOOLS & LAPORAN ===
-elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis": # Support both names
+elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
     if st.session_state.user_role == "ADMIN":
         st.title("🔧 Dashboard Admin & Tools")
-        
-        # TAB PEMBAGIAN
         tab_analitik, tab_tools = st.tabs(["📊 Analitik & Grafik", "💾 Backup & Reset"])
         
-        # --- TAB 1: DASHBOARD ANALITIK ---
         with tab_analitik:
             df_hist = get_history_df()
             if not df_hist.empty:
                 df_hist['waktu_lokal'] = pd.to_datetime(df_hist['timestamp']).dt.tz_convert('Asia/Jakarta')
                 df_hist['Tanggal'] = df_hist['waktu_lokal'].dt.date
-                
                 c_d1, c_d2 = st.columns(2)
                 start_date = c_d1.date_input("Dari", value=datetime.now().date() - timedelta(days=7))
                 end_date = c_d2.date_input("Sampai", value=datetime.now().date())
-                
                 df_filt = df_hist[(df_hist['Tanggal'] >= start_date) & (df_hist['Tanggal'] <= end_date)]
-                
                 if not df_filt.empty:
                     m1, m2 = st.columns(2)
                     m1.metric("Total Omzet", format_rp(df_filt['total_bill'].sum()))
                     m2.metric("Transaksi", len(df_filt))
-                    
                     st.markdown("---")
-                    
                     col_g1, col_g2 = st.columns([2,1])
                     with col_g1:
                         daily = df_filt.groupby('Tanggal')['total_bill'].sum().reset_index()
                         fig = px.line(daily, x='Tanggal', y='total_bill', title="Tren Harian", markers=True)
                         st.plotly_chart(fig, use_container_width=True)
                     with col_g2:
-                        # Top User
                         fig2 = px.pie(df_filt, names='user', title="Performa User", hole=0.4)
                         st.plotly_chart(fig2, use_container_width=True)
-                else:
-                    st.info("Data kosong di rentang tanggal ini.")
+                else: st.info("Data kosong di rentang tanggal ini.")
             else: st.info("Belum ada riwayat transaksi.")
 
-        # --- TAB 2: BACKUP & RESET ---
         with tab_tools:
             st.info("💡 Halaman ini digunakan untuk download data atau menghapus database.")
-            
             c_back, c_danger = st.columns([1, 1.2])
-            
             with c_back:
-                st.markdown("### 1. Backup Data")
+                st.markdown("### 1. Backup Data (Excel)")
                 st.caption("Download data sebelum melakukan reset!")
-                
-                # Download Stok
                 if not df_master.empty:
                     out_stok = io.BytesIO()
-                    df_master.to_csv(out_stok, index=False)
-                    st.download_button("📥 Download Master Stok (.csv)", out_stok.getvalue(), "Backup_Stok.csv", "text/csv", use_container_width=True)
+                    with pd.ExcelWriter(out_stok, engine='xlsxwriter') as writer:
+                        df_master.to_excel(writer, index=False, sheet_name='Stok_Gudang')
+                    st.download_button("📥 Download Master Stok (.xlsx)", out_stok.getvalue(), "Backup_Stok.xlsx", "application/vnd.ms-excel", use_container_width=True)
                 
-                # Download History
                 df_hist_all = get_history_df()
                 if not df_hist_all.empty:
+                    df_clean = df_hist_all.copy()
+                    df_clean['waktu_lokal'] = pd.to_datetime(df_clean['timestamp']).dt.tz_convert('Asia/Jakarta')
+                    cols_to_save = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
                     out_hist = io.BytesIO()
-                    df_hist_all.to_csv(out_hist, index=False)
-                    st.download_button("📥 Download Riwayat Transaksi (.csv)", out_hist.getvalue(), "Backup_Transaksi.csv", "text/csv", use_container_width=True)
+                    with pd.ExcelWriter(out_hist, engine='xlsxwriter') as writer:
+                        df_clean[cols_to_save].to_excel(writer, index=False, sheet_name='Riwayat_Transaksi')
+                    st.download_button("📥 Download Riwayat Transaksi (.xlsx)", out_hist.getvalue(), "Backup_Transaksi.xlsx", "application/vnd.ms-excel", use_container_width=True)
 
             with c_danger:
                 st.markdown('<div class="danger-zone">', unsafe_allow_html=True)
                 st.markdown("### 2. Danger Zone (Hapus Data)")
                 st.warning("⚠️ Perhatian: Data yang dihapus TIDAK BISA kembali.")
-                
-                action = st.radio("Pilih Tindakan:", [
-                    "Hapus Riwayat Transaksi Saja",
-                    "Hapus Semua Stok Barang", 
-                    "FACTORY RESET (Hapus Semuanya)"
-                ])
-                
+                action = st.radio("Pilih Tindakan:", ["Hapus Riwayat Transaksi Saja", "Hapus Semua Stok Barang", "FACTORY RESET (Hapus Semuanya)"])
                 pin_confirm = st.text_input("Masukkan PIN Keamanan:", type="password", placeholder="PIN Admin")
-                
                 if st.button("🔥 EKSEKUSI PENGHAPUSAN", type="primary", use_container_width=True):
-                    if pin_confirm == "123456": # PIN ADMIN
+                    if pin_confirm == "123456":
                         with st.spinner("Sedang menghapus data di Cloud..."):
                             if action == "Hapus Riwayat Transaksi Saja":
                                 count = delete_collection_batch('transactions', 100)
                                 st.success(f"Berhasil menghapus {count} data transaksi!")
-                            
                             elif action == "Hapus Semua Stok Barang":
                                 count = delete_collection_batch('inventory', 100)
                                 st.success(f"Berhasil mengosongkan gudang ({count} item)!")
-                            
                             elif action == "FACTORY RESET (Hapus Semuanya)":
-                                c1 = delete_collection_batch('transactions', 100)
-                                c2 = delete_collection_batch('inventory', 100)
+                                c1 = delete_collection_batch('transactions', 100); c2 = delete_collection_batch('inventory', 100)
                                 st.success(f"RESET TOTAL BERHASIL! ({c1} Trx, {c2} Stok)")
-                            
-                            time.sleep(2)
-                            st.rerun()
-                    else:
-                        st.error("PIN SALAH! Akses ditolak.")
-                
+                            time.sleep(2); st.rerun()
+                    else: st.error("PIN SALAH! Akses ditolak.")
                 st.markdown('</div>', unsafe_allow_html=True)
-                
     else: st.error("Akses Khusus Admin")
