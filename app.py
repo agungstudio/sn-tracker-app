@@ -1,7 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V4.0 Final UI Fix)
+# APLIKASI: SN TRACKER PRO (V4.1 Final Production)
 # ENGINE: Google Firestore
-# FIX: UI Danger Zone Rapi & Sorting SN Sempurna
+# STATUS: Stable, Secure, & Optimized
+# UPDATE: Batch Safety untuk Input Manual
 # ==========================================
 
 import streamlit as st
@@ -102,8 +103,11 @@ def get_history_df():
     return pd.DataFrame(data)
 
 def add_stock_batch(brand, sku, price, sn_list):
+    """Input stok manual dengan keamanan batch limit"""
     batch = db.batch()
     count = 0
+    total_added = 0
+    
     for sn in sn_list:
         sn = sn.strip()
         if sn:
@@ -113,8 +117,20 @@ def add_stock_batch(brand, sku, price, sn_list):
                 'sn': sn, 'status': 'Ready', 'created_at': datetime.now()
             })
             count += 1
-    batch.commit()
-    return count
+            
+            # Commit setiap 400 item untuk mencegah error limit Firestore
+            if count >= 400:
+                batch.commit()
+                batch = db.batch() # Reset batch
+                total_added += count
+                count = 0
+                
+    # Commit sisa data
+    if count > 0:
+        batch.commit()
+        total_added += count
+        
+    return total_added
 
 def import_stock_from_df(df):
     df.columns = [c.lower().strip() for c in df.columns]
@@ -186,7 +202,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("v4.0 Final UI", unsafe_allow_html=True)
+            st.caption("v4.1 Final Production", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -418,7 +434,6 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
                     st.warning("Belum ada data transaksi.")
 
             with c_danger:
-                # PERBAIKAN TAMPILAN: MENGGUNAKAN ST.ERROR UNTUK HEADER MERAH
                 st.error("### 2. Danger Zone (Hapus Data)")
                 with st.container(border=True):
                     st.warning("⚠️ Perhatian: Data yang dihapus TIDAK BISA kembali.")
