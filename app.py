@@ -1,9 +1,9 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.4 Lite Admin)
+# APLIKASI: SN TRACKER PRO (V5.5 Beautiful UI)
 # ENGINE: Supabase (PostgreSQL)
 # UPDATE: 
-# 1. Hapus Grafik (Lebih Ringan)
-# 2. Backup 1 File Excel isi 2 Sheet (Stok & History)
+# 1. Tampilan Kasir "Product Card" yang Modern
+# 2. Tampilan Admin Tools yang Rapi & Profesional
 # ==========================================
 
 import streamlit as st
@@ -17,7 +17,7 @@ import re
 # --- 1. SETUP HALAMAN ---
 st.set_page_config(
     page_title="SN Tracker",
-    page_icon="📦",
+    page_icon="💎",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -43,22 +43,113 @@ if 'keranjang' not in st.session_state: st.session_state.keranjang = []
 if 'search_key' not in st.session_state: st.session_state.search_key = 0 
 if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = False
 
-# --- 4. CSS CUSTOMIZATION ---
+# --- 4. CSS CUSTOMIZATION (NEW & IMPROVED) ---
 st.markdown("""
     <style>
-    :root { --brand-blue: #0095DA; --brand-yellow: #F99D1C; }
-    div.stButton > button[kind="primary"] {
-        background-color: var(--brand-blue); border: none; color: white; font-weight: bold;
-        padding: 8px 16px; border-radius: 6px;
+    /* VARIAN WARNA */
+    :root { 
+        --brand-blue: #0095DA; 
+        --brand-yellow: #F99D1C; 
+        --bg-card: #ffffff;
+        --text-dark: #333333;
     }
-    div.stButton > button[kind="primary"]:hover { background-color: #007bb5; }
-    div.stButton > button[data-testid="baseButton-secondary"] { border-color: #ff4b4b; color: #ff4b4b; }
-    div.stButton > button[data-testid="baseButton-secondary"]:hover { background-color: #fff0f0; border-color: #ff4b4b; color: #ff4b4b; }
-    .big-price { font-size: 28px; font-weight: 800; color: var(--brand-yellow); margin-bottom: 5px; display: block; }
-    .step-header { background-color: var(--brand-blue); color: white; padding: 8px 15px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; }
-    div[data-testid="stVerticalBlock"] .stCode { margin-bottom: 0px !important; }
-    .alert-stock { background-color: rgba(255, 0, 0, 0.1); color: #e53935; padding: 10px; border-radius: 5px; border: 1px solid #ef9a9a; margin-bottom: 10px; font-weight: bold; font-size: 14px; }
-    .danger-zone { border: 2px solid #e53935; background-color: #ffebee; padding: 20px; border-radius: 10px; }
+    
+    /* TOMBOL UTAMA */
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #0095DA 0%, #007bb5 100%);
+        border: none; 
+        color: white; 
+        font-weight: 700;
+        padding: 10px 20px; 
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 149, 218, 0.2);
+        transition: all 0.3s ease;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 149, 218, 0.3);
+    }
+    
+    /* TOMBOL SEKUNDER / LOGOUT */
+    div.stButton > button[data-testid="baseButton-secondary"] {
+        border: 2px solid #ff4b4b; 
+        color: #ff4b4b;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    div.stButton > button[data-testid="baseButton-secondary"]:hover {
+        background-color: #ff4b4b; 
+        color: white;
+    }
+
+    /* CARD PRODUK KASIR (KOTAK HASIL CARI) */
+    .product-card-container {
+        background-color: var(--bg-card);
+        padding: 25px;
+        border-radius: 12px;
+        border-left: 6px solid var(--brand-blue);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        margin-bottom: 20px;
+    }
+    .product-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin-bottom: 5px;
+    }
+    .product-badge {
+        background-color: #e3f2fd;
+        color: var(--brand-blue);
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-right: 5px;
+    }
+    .product-stock {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .big-price-tag {
+        font-size: 36px;
+        font-weight: 800;
+        color: var(--brand-yellow);
+        margin-top: 15px;
+        margin-bottom: 10px;
+        letter-spacing: -1px;
+    }
+
+    /* ADMIN TOOLS CARDS */
+    .admin-card-blue {
+        padding: 20px;
+        background-color: #f0f9ff;
+        border: 1px solid #b9e6fe;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+    .admin-card-red {
+        padding: 20px;
+        background-color: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+    .admin-header {
+        font-weight: 700;
+        font-size: 18px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    /* MODIFIKASI BAWAAN STREAMLIT */
+    .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
+    div[data-testid="stExpander"] { border: 1px solid #eee; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -203,7 +294,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.4 Lite Admin", unsafe_allow_html=True)
+            st.caption("v5.5 Beautiful UI", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -256,30 +347,39 @@ if menu == "🛒 Kasir":
     
     c_product, c_cart = st.columns([1.8, 1])
     with c_product:
-        st.markdown('<div class="step-header">1️⃣ Cari & Scan Barang</div>', unsafe_allow_html=True)
+        # Search Box dengan Styling Bawaan Streamlit yang Bersih
+        st.info("💡 Ketik Nama Barang / Scan Barcode")
+        
         if not df_master.empty:
             df_ready = df_master[df_master['status'] == 'Ready']
             if not df_ready.empty:
                 df_ready['display'] = "[" + df_ready['brand'] + "] " + df_ready['sku'] + " (" + df_ready['price'].apply(format_rp) + ")"
                 search_options = sorted(df_ready['display'].unique())
-                pilih_barang = st.selectbox("🔍 Cari Produk:", ["-- Pilih Produk --"] + search_options, key=f"sb_{st.session_state.search_key}")
+                pilih_barang = st.selectbox("Pilih Produk:", ["-- Pilih Produk --"] + search_options, key=f"sb_{st.session_state.search_key}", label_visibility="collapsed")
                 
                 if pilih_barang != "-- Pilih Produk --":
                     rows = df_ready[df_ready['display'] == pilih_barang]
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
-                        st.markdown(f"<span class='big-price'>{format_rp(item['price'])}</span>", unsafe_allow_html=True)
-                        st.caption(f"Brand: {item['brand']} | SKU: {sku}")
+                        
+                        # TAMPILAN BARU: PRODUCT CARD (HTML/CSS)
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
-                        st.divider()
+                        
+                        st.markdown(f"""
+                        <div class="product-card-container">
+                            <span class="product-badge">{item['brand']}</span>
+                            <span class="product-stock">Stok Tersedia: {len(avail)}</span>
+                            <div class="product-title">{sku}</div>
+                            <div class="big-price-tag">{format_rp(item['price'])}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
                         col_sn, col_add = st.columns([2, 1])
                         with col_sn:
                             sn_list_sorted = sorted(avail['sn'].tolist(), key=natural_sort_key)
-                            p_sn = st.multiselect("Pilih SN:", sn_list_sorted, placeholder="Pilih SN...")
-                            st.write(f"Stok: **{len(avail)}** Unit")
+                            p_sn = st.multiselect("Pilih SN:", sn_list_sorted, placeholder="Pilih Nomor SN...", label_visibility="collapsed")
                         with col_add:
-                            st.write(""); st.write("") 
                             if st.button("TAMBAH ➕", type="primary", use_container_width=True):
                                 if p_sn:
                                     for s in p_sn: st.session_state.keranjang.append(avail[avail['sn']==s].iloc[0].to_dict())
@@ -290,7 +390,7 @@ if menu == "🛒 Kasir":
         else: st.warning("Database Kosong.")
 
     with c_cart:
-        st.markdown('<div class="step-header">2️⃣ Keranjang</div>', unsafe_allow_html=True)
+        st.markdown("### Keranjang")
         if st.session_state.keranjang:
             with st.container(height=450, border=True):
                 st.caption("Klik tombol kecil di kanan SN untuk Copy.")
@@ -416,63 +516,50 @@ elif menu == "🔧 Admin Tools":
         with tab1:
             df_hist = get_history_df()
             if not df_hist.empty:
-                df_hist['waktu'] = pd.to_datetime(df_hist['timestamp'])
-                df_hist['Tgl'] = df_hist['waktu'].dt.date
                 m1, m2 = st.columns(2)
-                m1.metric("Omzet", format_rp(df_hist['total_bill'].sum()))
-                m2.metric("Transaksi", len(df_hist))
+                m1.metric("Omzet Total", format_rp(df_hist['total_bill'].sum()))
+                m2.metric("Total Transaksi", len(df_hist))
                 st.dataframe(df_hist[['trx_id', 'timestamp', 'user', 'total_bill']], use_container_width=True)
             else: st.info("Belum ada transaksi")
 
         with tab2:
-            st.info("Download Backup & Maintenance")
+            # TAMPILAN ADMIN CARD YANG BARU
+            st.markdown('<div class="admin-card-blue"><div class="admin-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
             
-            # --- FITUR BACKUP 1 FILE 2 SHEET ---
-            if st.button("📥 DOWNLOAD FULL DATABASE (.xlsx)"):
+            if st.button("DOWNLOAD DATABASE LENGKAP (.xlsx)", use_container_width=True):
                 if not df_master.empty or not df_hist.empty:
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                        # Sheet 1: Stok
                         if not df_master.empty:
                             df_stok_clean = df_master.copy()
-                            # Convert timezone to string to avoid Excel error
                             for col in df_stok_clean.columns:
                                 if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
                                     df_stok_clean[col] = df_stok_clean[col].astype(str)
                             df_stok_clean.to_excel(writer, sheet_name='Stok Gudang', index=False)
                         
-                        # Sheet 2: Transaksi
                         if not df_hist.empty:
                             df_hist_clean = df_hist.copy()
-                            # Convert timezone to string
                             if 'timestamp' in df_hist_clean.columns:
                                 df_hist_clean['waktu_lokal'] = pd.to_datetime(df_hist_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
-                            else:
-                                df_hist_clean['waktu_lokal'] = "-"
-                            
+                            else: df_hist_clean['waktu_lokal'] = "-"
                             cols_target = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
-                            # Ensure columns exist
                             for c in cols_target:
                                 if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
-                                
                             df_hist_clean[cols_target].to_excel(writer, sheet_name='Riwayat Transaksi', index=False)
                             
-                    st.download_button(
-                        label="Klik disini untuk Simpan File",
-                        data=buffer.getvalue(),
-                        file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.ms-excel"
-                    )
-                else:
-                    st.warning("Data masih kosong.")
+                    st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
+                else: st.warning("Data kosong.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown("---")
-            if st.button("Hapus Semua Data (Danger Zone)"):
+            st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
+            if st.button("Buka Menu Hapus Data", type="primary"):
                 st.session_state.reset_mode = True
             
             if 'reset_mode' in st.session_state and st.session_state.reset_mode:
+                st.warning("Masukkan PIN untuk konfirmasi penghapusan total.")
                 if st.text_input("PIN Konfirmasi:", type="password") == "123456":
-                    if st.button(" 🔥 YA, RESET TOTAL 🔥"):
+                    if st.button(" 🔥 YA, RESET TOTAL 🔥", use_container_width=True):
                         factory_reset('inventory')
                         factory_reset('transactions')
                         st.success("Reset Berhasil"); time.sleep(2); st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
