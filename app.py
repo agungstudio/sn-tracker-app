@@ -1,9 +1,9 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.8 Dynamic Theme)
+# APLIKASI: SN TRACKER PRO (V6.0 Template & Toasts)
 # ENGINE: Supabase (PostgreSQL)
-# FIX: Menggunakan CSS Variables native Streamlit
-# agar tampilan otomatis menyesuaikan Light/Dark Mode
-# tanpa kode warna hardcoded yang kaku.
+# UPDATE: 
+# 1. Tombol Download Template Excel/CSV untuk Import
+# 2. Notifikasi Pop-up (Toast) di setiap aktivitas
 # ==========================================
 
 import streamlit as st
@@ -141,7 +141,6 @@ st.markdown("""
     .metric-value { font-size: 28px; font-weight: 800; margin-top: 5px; }
 
     /* ADMIN TOOLS CARDS */
-    /* Menggunakan border warna, bukan background solid, agar aman di dark mode */
     .admin-card-blue {
         padding: 20px;
         border: 1px solid #0095DA;
@@ -317,7 +316,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.8 Dynamic Theme", unsafe_allow_html=True)
+            st.caption("v6.0 Template & Toasts", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -338,7 +337,7 @@ with st.sidebar:
     
     if st.button("🔄 Refresh Data"):
         clear_cache()
-        st.toast("Data direfresh!")
+        st.toast("Data berhasil diperbarui!", icon="✅")
         time.sleep(0.5)
         st.rerun()
         
@@ -370,7 +369,6 @@ if menu == "🛒 Kasir":
     
     c_product, c_cart = st.columns([1.8, 1])
     with c_product:
-        # Search Box Clean
         st.info("💡 Ketik Nama Barang / Scan Barcode")
         
         if not df_master.empty:
@@ -384,10 +382,6 @@ if menu == "🛒 Kasir":
                     rows = df_ready[df_ready['display'] == pilih_barang]
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
-                        
-                        # CARD PRODUK DINAMIS
-                        sn_cart = [x['sn'] for x in st.session_state.keranjang]
-                        avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
                         st.markdown(f"""
                         <div class="product-card-container">
@@ -406,7 +400,9 @@ if menu == "🛒 Kasir":
                             if st.button("TAMBAH ➕", type="primary", use_container_width=True):
                                 if p_sn:
                                     for s in p_sn: st.session_state.keranjang.append(avail[avail['sn']==s].iloc[0].to_dict())
-                                    st.session_state.search_key += 1; st.toast("Masuk Keranjang!", icon="🛒"); time.sleep(0.1); st.rerun()
+                                    st.session_state.search_key += 1; 
+                                    st.toast(f"{len(p_sn)} barang masuk keranjang!", icon="🛒")
+                                    time.sleep(0.1); st.rerun()
                                 else: st.warning("Pilih SN dulu")
                     else: st.warning("Barang tidak ditemukan.")
             else: st.warning("Stok Gudang Kosong.")
@@ -430,11 +426,15 @@ if menu == "🛒 Kasir":
                 if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
                     if tid:
-                        st.session_state.keranjang = []; st.balloons(); st.success("Transaksi Sukses!")
+                        st.session_state.keranjang = []; st.balloons(); 
+                        st.toast("Transaksi Berhasil Disimpan!", icon="✅")
+                        st.success("Transaksi Sukses!")
                         st.session_state.last_trx = {'id': tid, 'total': tbil}
                         st.rerun()
                 if st.button("❌ Batal", use_container_width=True):
-                    st.session_state.keranjang = []; st.rerun()
+                    st.session_state.keranjang = []; 
+                    st.toast("Keranjang dibersihkan.", icon="🗑️")
+                    st.rerun()
         else:
             with st.container(border=True):
                 if 'last_trx' in st.session_state and st.session_state.last_trx:
@@ -459,18 +459,12 @@ elif menu == "📦 Gudang":
                 stok_rekap = df_ready.groupby(['brand', 'sku', 'price']).size().reset_index(name='Total Stok')
                 stok_rekap = stok_rekap.sort_values(by=['brand', 'sku'])
                 
-                # Metric Cards UI
                 c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.markdown(f"""<div class="metric-box"><div class="metric-label">TOTAL UNIT</div><div class="metric-value">{len(df_ready)}</div></div>""", unsafe_allow_html=True)
-                with c2:
-                    st.markdown(f"""<div class="metric-box"><div class="metric-label">NILAI ASET</div><div class="metric-value">{format_rp(df_ready['price'].sum())}</div></div>""", unsafe_allow_html=True)
-                with c3:
-                    st.markdown(f"""<div class="metric-box"><div class="metric-label">JENIS PRODUK</div><div class="metric-value">{len(stok_rekap)}</div></div>""", unsafe_allow_html=True)
-                
+                with c1: st.markdown(f"""<div class="metric-box"><div class="metric-label">TOTAL UNIT</div><div class="metric-value">{len(df_ready)}</div></div>""", unsafe_allow_html=True)
+                with c2: st.markdown(f"""<div class="metric-box"><div class="metric-label">NILAI ASET</div><div class="metric-value">{format_rp(df_ready['price'].sum())}</div></div>""", unsafe_allow_html=True)
+                with c3: st.markdown(f"""<div class="metric-box"><div class="metric-label">JENIS PRODUK</div><div class="metric-value">{len(stok_rekap)}</div></div>""", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # Styled Table
                 max_stok = int(stok_rekap['Total Stok'].max())
                 st.dataframe(
                     stok_rekap, 
@@ -511,17 +505,35 @@ elif menu == "📦 Gudang":
                     if st.form_submit_button("SIMPAN", type="primary"):
                         if b and s and sn: 
                             added, dups, dup_list = add_stock_batch(st.session_state.user_role, b, s, p, sn.strip().split('\n'))
-                            if added > 0: st.success(f"✅ Berhasil input {added} item baru.")
+                            if added > 0: 
+                                st.toast(f"Berhasil input {added} item baru!", icon="✅")
+                                st.success(f"✅ Berhasil input {added} item baru.")
                             if dups > 0: 
+                                st.toast(f"Ada {dups} item duplikat ditolak.", icon="⚠️")
                                 st.error(f"❌ Gagal {dups} item karena Duplikat.")
                                 st.write("List Duplikat:", dup_list)
                             time.sleep(2); st.rerun()
             else:
-                uf = st.file_uploader("Excel/CSV", type=['xlsx','csv'])
-                if uf and st.button("PROSES", type="primary"):
+                # TOMBOL DOWNLOAD TEMPLATE CSV
+                template_df = pd.DataFrame([
+                    {'brand': 'SAMSUNG', 'sku': 'GALAXY A55 5G', 'price': 6000000, 'sn': 'SN1001'},
+                    {'brand': 'APPLE', 'sku': 'IPHONE 15', 'price': 15000000, 'sn': 'SN1002'}
+                ])
+                csv_buffer = template_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Template Excel/CSV",
+                    data=csv_buffer,
+                    file_name="template_stok.csv",
+                    mime="text/csv",
+                    help="Gunakan file ini sebagai contoh format upload."
+                )
+                
+                uf = st.file_uploader("Upload File CSV/Excel", type=['xlsx','csv'])
+                if uf and st.button("PROSES IMPORT", type="primary"):
                     df = pd.read_csv(uf) if uf.name.endswith('.csv') else pd.read_excel(uf)
                     ok, added, dups = import_stock_from_df(st.session_state.user_role, df)
                     if ok: 
+                        st.toast(f"Import Selesai! (+{added})", icon="✅")
                         st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}")
                         time.sleep(2); st.rerun()
                     else: st.error(added)
@@ -549,8 +561,14 @@ elif menu == "📦 Gudang":
                     for i, r in de.iterrows():
                         with st.expander(f"{r['sku']} ({r['sn']})"):
                             np = st.number_input("Harga", value=int(r['price']), key=f"p{r['sn']}")
-                            if st.button("Update", key=f"u{r['sn']}"): update_stock_price(r['sn'], np); st.rerun()
-                            if st.button("Hapus", key=f"d{r['sn']}", type="primary"): delete_stock(r['sn']); st.rerun()
+                            if st.button("Update", key=f"u{r['sn']}"): 
+                                update_stock_price(r['sn'], np)
+                                st.toast("Harga berhasil diupdate!", icon="✅")
+                                time.sleep(1); st.rerun()
+                            if st.button("Hapus", key=f"d{r['sn']}", type="primary"): 
+                                delete_stock(r['sn'])
+                                st.toast("Data berhasil dihapus!", icon="🗑️")
+                                time.sleep(1); st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
 # === ADMIN TOOLS ===
@@ -571,7 +589,6 @@ elif menu == "🔧 Admin Tools":
 
         with tab2:
             st.markdown('<div class="admin-card-blue"><div class="admin-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
-            
             if st.button("DOWNLOAD DATABASE LENGKAP (.xlsx)", use_container_width=True):
                 if not df_master.empty or not df_hist.empty:
                     buffer = io.BytesIO()
@@ -582,7 +599,6 @@ elif menu == "🔧 Admin Tools":
                                 if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
                                     df_stok_clean[col] = df_stok_clean[col].astype(str)
                             df_stok_clean.to_excel(writer, sheet_name='Stok Gudang', index=False)
-                        
                         if not df_hist.empty:
                             df_hist_clean = df_hist.copy()
                             if 'timestamp' in df_hist_clean.columns:
@@ -592,20 +608,34 @@ elif menu == "🔧 Admin Tools":
                             for c in cols_target:
                                 if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
                             df_hist_clean[cols_target].to_excel(writer, sheet_name='Riwayat Transaksi', index=False)
-                            
                     st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
+                    st.toast("File Backup Siap!", icon="📂")
                 else: st.warning("Data kosong.")
             st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
-            if st.button("Buka Menu Hapus Data", type="primary"):
-                st.session_state.reset_mode = True
+            # Pilihan Hapus
+            hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
             
-            if 'reset_mode' in st.session_state and st.session_state.reset_mode:
-                st.warning("Masukkan PIN untuk konfirmasi penghapusan total.")
-                if st.text_input("PIN Konfirmasi:", type="password") == "123456":
-                    if st.button(" 🔥 YA, RESET TOTAL 🔥", use_container_width=True):
-                        factory_reset('inventory')
-                        factory_reset('transactions')
-                        st.success("Reset Berhasil"); time.sleep(2); st.rerun()
+            if hapus_opsi != "-- Pilih Tindakan --":
+                st.warning(f"Anda akan melakukan: {hapus_opsi}")
+                pin_konfirm = st.text_input("Masukkan PIN Konfirmasi:", type="password")
+                
+                if st.button("🔥 JALANKAN PENGHAPUSAN 🔥", type="primary", use_container_width=True):
+                    if pin_konfirm == "123456":
+                        with st.spinner("Sedang menghapus..."):
+                            if "1." in hapus_opsi:
+                                factory_reset('transactions')
+                                st.toast("Riwayat Transaksi Dihapus!", icon="🗑️")
+                                st.success("Riwayat Transaksi Telah Dihapus.")
+                            elif "2." in hapus_opsi:
+                                factory_reset('inventory')
+                                st.toast("Stok Dihapus!", icon="🗑️")
+                                st.success("Stok Barang Telah Dikosongkan.")
+                            elif "3." in hapus_opsi:
+                                factory_reset('inventory'); factory_reset('transactions'); factory_reset('import_logs')
+                                st.toast("Reset Total Berhasil!", icon="🚀")
+                                st.success("RESET TOTAL BERHASIL! Aplikasi kembali seperti baru.")
+                            time.sleep(2); st.rerun()
+                    else: st.error("PIN Salah!")
             st.markdown('</div>', unsafe_allow_html=True)
