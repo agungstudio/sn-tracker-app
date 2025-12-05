@@ -1,8 +1,9 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.7 Dark Mode Fix)
+# APLIKASI: SN TRACKER PRO (V5.8 Dynamic Theme)
 # ENGINE: Supabase (PostgreSQL)
-# FIX: Tampilan UI sekarang otomatis menyesuaikan
-# tema Terang/Gelap (Adaptive CSS)
+# FIX: Menggunakan CSS Variables native Streamlit
+# agar tampilan otomatis menyesuaikan Light/Dark Mode
+# tanpa kode warna hardcoded yang kaku.
 # ==========================================
 
 import streamlit as st
@@ -42,39 +43,18 @@ if 'keranjang' not in st.session_state: st.session_state.keranjang = []
 if 'search_key' not in st.session_state: st.session_state.search_key = 0 
 if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = False
 
-# --- 4. CSS CUSTOMIZATION (ADAPTIVE THEME) ---
+# --- 4. CSS CUSTOMIZATION (FULLY DYNAMIC) ---
 st.markdown("""
     <style>
-    /* VARIABEL WARNA (DEFAULT LIGHT) */
+    /* VARIABEL DINAMIS (Mengikut Tema Streamlit) */
     :root { 
         --brand-blue: #0095DA; 
         --brand-yellow: #F99D1C; 
         
-        /* Warna Adaptif (Akan berubah di Dark Mode) */
-        --bg-card: #ffffff;
-        --text-main: #333333;
-        --text-sub: #666666;
-        --border-color: #e0e0e0;
-        --info-bg: #f0f9ff;
-        --info-border: #b9e6fe;
-        --danger-bg: #fef2f2;
-        --danger-border: #fecaca;
-        --metric-bg: #f8f9fa;
-    }
-
-    /* DETEKSI DARK MODE & OVERRIDE WARNA */
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --bg-card: #262730; /* Warna latar kartu gelap */
-            --text-main: #ffffff;
-            --text-sub: #d0d0d0;
-            --border-color: #464b5c;
-            --info-bg: rgba(0, 149, 218, 0.15); /* Biru transparan */
-            --info-border: #0095DA;
-            --danger-bg: rgba(255, 75, 75, 0.15); /* Merah transparan */
-            --danger-border: #ff4b4b;
-            --metric-bg: #1e1e1e;
-        }
+        /* Ini adalah "Jembatan" ke warna tema user */
+        --card-bg: var(--secondary-background-color);
+        --text-color: var(--text-color);
+        --border-color: rgba(128, 128, 128, 0.2);
     }
     
     /* TOMBOL UTAMA */
@@ -85,43 +65,43 @@ st.markdown("""
         font-weight: 700;
         padding: 10px 20px; 
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         transition: all 0.3s ease;
     }
     div.stButton > button[kind="primary"]:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 10px rgba(0, 149, 218, 0.3);
     }
     
-    /* TOMBOL SEKUNDER / LOGOUT */
+    /* TOMBOL LOGOUT */
     div.stButton > button[data-testid="baseButton-secondary"] {
-        border: 2px solid #ff4b4b; 
+        border: 1px solid #ff4b4b; 
         color: #ff4b4b;
         border-radius: 8px;
-        font-weight: 600;
-        background-color: transparent;
     }
     div.stButton > button[data-testid="baseButton-secondary"]:hover {
         background-color: #ff4b4b; 
         color: white;
+        border-color: #ff4b4b;
     }
 
-    /* CARD PRODUK KASIR */
+    /* CARD PRODUK KASIR (DINAMIS) */
     .product-card-container {
-        background-color: var(--bg-card);
+        background-color: var(--card-bg); /* Berubah sesuai mode */
         padding: 25px;
         border-radius: 12px;
         border: 1px solid var(--border-color);
         border-left: 6px solid var(--brand-blue);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         margin-bottom: 20px;
+        color: var(--text-color);
     }
     .product-title {
         font-size: 22px;
         font-weight: 700;
-        color: var(--text-main);
         margin-bottom: 5px;
     }
+    /* Badge menggunakan transparansi agar cocok di dark/light */
     .product-badge {
         background-color: rgba(0, 149, 218, 0.15);
         color: var(--brand-blue);
@@ -133,7 +113,7 @@ st.markdown("""
     }
     .product-stock {
         background-color: rgba(46, 125, 50, 0.15);
-        color: #4caf50; /* Hijau terang agar terbaca di dark mode */
+        color: #4caf50;
         padding: 4px 10px;
         border-radius: 12px;
         font-size: 12px;
@@ -145,56 +125,38 @@ st.markdown("""
         color: var(--brand-yellow);
         margin-top: 15px;
         margin-bottom: 10px;
-        letter-spacing: -1px;
-    }
-
-    /* GENERAL CARDS (Gudang & Admin) */
-    .info-card {
-        padding: 20px;
-        background-color: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-    }
-    .info-header {
-        font-weight: 700;
-        font-size: 16px;
-        color: var(--brand-blue);
-        margin-bottom: 15px;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 10px;
     }
 
     /* METRIC BOX (Dashboard Gudang) */
     .metric-box {
-        background-color: var(--metric-bg);
+        background-color: var(--card-bg);
         padding: 20px;
         border-radius: 12px;
         border: 1px solid var(--border-color);
         border-left: 4px solid var(--brand-blue);
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         text-align: center;
+        color: var(--text-color);
     }
-    .metric-label { font-size: 14px; color: var(--text-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-value { font-size: 28px; font-weight: 800; color: var(--text-main); margin-top: 5px; }
+    .metric-label { font-size: 14px; opacity: 0.7; font-weight: 600; text-transform: uppercase; }
+    .metric-value { font-size: 28px; font-weight: 800; margin-top: 5px; }
 
     /* ADMIN TOOLS CARDS */
+    /* Menggunakan border warna, bukan background solid, agar aman di dark mode */
     .admin-card-blue {
         padding: 20px;
-        background-color: var(--info-bg);
-        border: 1px solid var(--info-border);
+        border: 1px solid #0095DA;
+        background-color: rgba(0, 149, 218, 0.05);
         border-radius: 10px;
         margin-bottom: 15px;
-        color: var(--text-main);
+        color: var(--text-color);
     }
     .admin-card-red {
         padding: 20px;
-        background-color: var(--danger-bg);
         border: 1px solid #ff4b4b;
+        background-color: rgba(255, 75, 75, 0.05);
         border-radius: 10px;
         margin-bottom: 15px;
-        color: var(--text-main);
+        color: var(--text-color);
     }
     .admin-header {
         font-weight: 700;
@@ -205,11 +167,10 @@ st.markdown("""
         gap: 10px;
     }
     
-    /* MODIFIKASI BAWAAN STREAMLIT */
     .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
     div[data-testid="stExpander"] { 
         border: 1px solid var(--border-color); 
-        background-color: var(--bg-card);
+        background-color: var(--card-bg);
         border-radius: 8px; 
     }
     </style>
@@ -356,7 +317,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.7 Dark Mode Support", unsafe_allow_html=True)
+            st.caption("v5.8 Dynamic Theme", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -424,7 +385,7 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
-                        # CARD PRODUK
+                        # CARD PRODUK DINAMIS
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
