@@ -1,9 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.3 Stable Fix)
+# APLIKASI: SN TRACKER PRO (V6.4 Low Stock Reborn)
 # ENGINE: Supabase (PostgreSQL)
-# FIX: 
-# 1. Error saat Reset Import Logs (APIError)
-# 2. Perbaikan fungsi logging aktivitas (Syntax Update)
+# UPDATE: Mengembalikan fitur "Peringatan Stok Menipis"
+# di Sidebar karena Supabase aman (Unlimited Reads).
 # ==========================================
 
 import streamlit as st
@@ -109,6 +108,18 @@ st.markdown("""
     
     .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
     div[data-testid="stExpander"] { border: 1px solid var(--border-color); background-color: var(--card-bg); border-radius: 8px; }
+    
+    /* ALERT STOCK DI SIDEBAR */
+    .sidebar-alert {
+        background-color: rgba(255, 75, 75, 0.1); 
+        border: 1px solid #ff4b4b; 
+        color: #ff4b4b; 
+        padding: 12px; 
+        border-radius: 8px; 
+        font-size: 14px; 
+        font-weight: 600;
+        margin-top: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -147,30 +158,18 @@ def get_import_logs():
 # --- WRITE DATA ---
 
 def log_import_activity(user, method, items_df):
-    """
-    Mencatat log import.
-    FIX: Menggunakan syntax Supabase .insert() bukan db.collection()
-    """
     try:
         items_list = items_df[['brand', 'sku', 'sn', 'price']].to_dict('records')
-        log_data = {
-            'timestamp': datetime.now().isoformat(),
-            'user': user,
-            'method': method,
-            'total_items': len(items_df),
-            'items_detail': items_list
-        }
+        log_data = {'timestamp': datetime.now().isoformat(), 'user': user, 'method': method, 'total_items': len(items_df), 'items_detail': items_list}
         supabase.table('import_logs').insert(log_data).execute()
         clear_cache()
-    except Exception as e:
-        print(f"Log Error: {e}") # Silent error agar tidak ganggu user
+    except Exception as e: print(f"Log Error: {e}")
 
 def add_stock_batch(user, brand, sku, price, sn_list):
     clean_sn_list = []
     for sn in sn_list:
         clean_sn = sn.strip().upper() 
         if clean_sn: clean_sn_list.append(clean_sn)
-            
     clean_sn_list = list(set(clean_sn_list))
     if not clean_sn_list: return 0, 0, []
 
@@ -184,30 +183,25 @@ def add_stock_batch(user, brand, sku, price, sn_list):
     duplicate_items = []
     
     for sn in clean_sn_list:
-        if sn in existing_sns:
-            duplicate_items.append(sn)
+        if sn in existing_sns: duplicate_items.append(sn)
         else:
             item = {'sn': sn, 'brand': brand, 'sku': sku, 'price': int(price), 'status': 'Ready', 'created_at': datetime.now().isoformat()}
-            new_items.append(item)
-            log_items.append(item)
+            new_items.append(item); log_items.append(item)
     
     if new_items:
         try:
             supabase.table('inventory').insert(new_items).execute()
-            # Log Activity (Fix V6.3)
             log_import_activity(user, "Manual Input", pd.DataFrame(log_items))
             clear_cache()
         except Exception as e:
             st.error(f"Error Database: {e}")
             return 0, 0, []
-
     return len(new_items), len(duplicate_items), duplicate_items
 
 def import_stock_from_df(user, df):
     df.columns = [c.lower().strip() for c in df.columns]
     df['sn'] = df['sn'].astype(str).str.strip().str.upper()
     df = df.drop_duplicates(subset=['sn'])
-    
     sn_list_excel = df['sn'].tolist()
     existing_sns = []
     batch_size = 500
@@ -215,70 +209,45 @@ def import_stock_from_df(user, df):
         batch = sn_list_excel[i:i+batch_size]
         res = supabase.table('inventory').select("sn").in_("sn", batch).execute()
         existing_sns.extend([x['sn'] for x in res.data])
-        
     df_new = df[~df['sn'].isin(existing_sns)]
     df_dup = df[df['sn'].isin(existing_sns)]
-    
     data_to_insert = []
     for index, row in df_new.iterrows():
         item = {'sn': row['sn'], 'brand': str(row['brand']), 'sku': str(row['sku']), 'price': int(row['price']), 'status': 'Ready', 'created_at': datetime.now().isoformat()}
         data_to_insert.append(item)
-    
     if data_to_insert:
         try:
             for i in range(0, len(data_to_insert), 1000):
                 batch = data_to_insert[i:i + 1000]
                 supabase.table('inventory').insert(batch).execute()
-            
-            # Log Activity (Fix V6.3)
             log_import_activity(user, "Excel Import", pd.DataFrame(data_to_insert))
             clear_cache()
             return True, len(data_to_insert), len(df_dup)
         except Exception as e: return False, str(e), 0
-            
     return True, 0, len(df_dup)
 
 def process_checkout(user, cart_items):
     total = sum(item['price'] for item in cart_items)
     sn_sold = [item['sn'] for item in cart_items]
     trx_id = f"TRX-{int(time.time())}"
-    
     try:
         supabase.table('inventory').update({'status': 'Sold', 'sold_at': datetime.now().isoformat()}).in_('sn', sn_sold).execute()
         trx_data = {'trx_id': trx_id, 'timestamp': datetime.now().isoformat(), 'user': user, 'total_bill': total, 'items_count': len(sn_sold), 'item_details': cart_items}
         supabase.table('transactions').insert(trx_data).execute()
         clear_cache()
         return trx_id, total
-    except Exception as e:
-        st.error(f"Transaksi Gagal: {e}")
-        return None, 0
+    except Exception as e: st.error(f"Transaksi Gagal: {e}"); return None, 0
 
 def update_stock_price(sn, new_price):
-    supabase.table('inventory').update({'price': int(new_price)}).eq('sn', sn).execute()
-    clear_cache()
+    supabase.table('inventory').update({'price': int(new_price)}).eq('sn', sn).execute(); clear_cache()
 
 def delete_stock(sn):
-    supabase.table('inventory').delete().eq('sn', sn).execute()
-    clear_cache()
+    supabase.table('inventory').delete().eq('sn', sn).execute(); clear_cache()
 
 def factory_reset(table_name):
-    # FIX V6.3: Identifikasi kolom kunci yang benar
-    # inventory -> sn
-    # transactions -> trx_id
-    # import_logs -> id
-    
-    target_col = "sn" # Default inventory
-    if table_name == "transactions":
-        target_col = "trx_id"
-    elif table_name == "import_logs":
-        target_col = "id"
-    
-    try:
-        # Hapus data yang tidak sama dengan 'dummy_val' (Artinya hapus semua)
-        supabase.table(table_name).delete().neq(target_col, 'dummy_val').execute()
-    except Exception as e:
-        st.error(f"Gagal reset {table_name}: {e}")
-    
+    target_col = "sn" if table_name == "inventory" else "trx_id" if table_name == "transactions" else "id"
+    try: supabase.table(table_name).delete().neq(target_col, 'dummy_val').execute()
+    except Exception as e: st.error(f"Gagal reset {table_name}: {e}")
     clear_cache()
 
 # --- 6. LOGIN ---
@@ -288,7 +257,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.3 Fix & Stable", unsafe_allow_html=True)
+            st.caption("v6.4 Low Stock Reborn", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -301,6 +270,9 @@ def login_page():
 if not st.session_state.logged_in: login_page(); st.stop()
 
 # --- 7. SIDEBAR ---
+# LOAD DATA GLOBAL UNTUK SIDEBAR & SEMUA HALAMAN
+df_master = get_inventory_df()
+
 with st.sidebar:
     st.markdown("### 📦 SN Tracker")
     st.markdown(f"User: **{st.session_state.user_role}**")
@@ -313,6 +285,24 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
         
+    # --- FITUR LOW STOCK ALERT DIKEMBALIKAN DI SINI ---
+    if not df_master.empty:
+        df_ready = df_master[df_master['status'] == 'Ready']
+        if not df_ready.empty:
+            stok_rekap = df_ready.groupby(['brand', 'sku']).size().reset_index(name='jumlah')
+            stok_tipis = stok_rekap[stok_rekap['jumlah'] < 5]
+            
+            if not stok_tipis.empty:
+                st.markdown(f"""
+                <div class="sidebar-alert">
+                    ⚠️ {len(stok_tipis)} Barang Stok Menipis!
+                </div>
+                """, unsafe_allow_html=True)
+                
+                with st.expander("Lihat Detail"):
+                    st.dataframe(stok_tipis, hide_index=True, use_container_width=True)
+    # --------------------------------------------------
+
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
     
@@ -337,7 +327,6 @@ with st.sidebar:
 # === KASIR ===
 if menu == "🛒 Kasir":
     st.title("🛒 Kasir")
-    df_master = get_inventory_df()
     
     c_product, c_cart = st.columns([1.8, 1])
     with c_product:
@@ -355,7 +344,6 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
-                        # Hitung avail DULU sebelum ditampilkan
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
@@ -423,10 +411,9 @@ if menu == "🛒 Kasir":
 # === GUDANG ===
 elif menu == "📦 Gudang":
     st.title("📦 Manajemen Gudang")
-    df_master = get_inventory_df() # Load data
+    # df_master sudah diload di global, jadi aman
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
-    # TAB 1: DASHBOARD
     with tabs[0]:
         st.subheader("Ringkasan Stok")
         if not df_master.empty:
@@ -434,27 +421,16 @@ elif menu == "📦 Gudang":
             if not df_ready.empty:
                 stok_rekap = df_ready.groupby(['brand', 'sku', 'price']).size().reset_index(name='Total Stok')
                 stok_rekap = stok_rekap.sort_values(by=['brand', 'sku'])
-                
                 c1, c2, c3 = st.columns(3)
                 with c1: st.markdown(f"""<div class="metric-box"><div class="metric-label">TOTAL UNIT</div><div class="metric-value">{len(df_ready)}</div></div>""", unsafe_allow_html=True)
                 with c2: st.markdown(f"""<div class="metric-box"><div class="metric-label">NILAI ASET</div><div class="metric-value">{format_rp(df_ready['price'].sum())}</div></div>""", unsafe_allow_html=True)
                 with c3: st.markdown(f"""<div class="metric-box"><div class="metric-label">JENIS PRODUK</div><div class="metric-value">{len(stok_rekap)}</div></div>""", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                
                 max_stok = int(stok_rekap['Total Stok'].max())
-                st.dataframe(
-                    stok_rekap, 
-                    use_container_width=True, 
-                    column_config={
-                        "price": st.column_config.NumberColumn("Harga", format="Rp %d"), 
-                        "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)
-                    }, 
-                    hide_index=True
-                )
+                st.dataframe(stok_rekap, use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d"), "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)}, hide_index=True)
             else: st.info("Gudang Kosong.")
         else: st.info("Database Kosong.")
 
-    # TAB 2: DETAIL SN
     with tabs[1]:
         st.markdown('<div class="info-card"><div class="info-header">🔍 Pencarian Detail SN</div>', unsafe_allow_html=True)
         if not df_master.empty:
@@ -467,13 +443,11 @@ elif menu == "📦 Gudang":
             st.dataframe(dv[['sn','sku','brand','price','status']], use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # TAB 3: INPUT BARANG
     with tabs[2]:
         if st.session_state.user_role == "ADMIN":
             st.markdown('<div class="info-card"><div class="info-header">➕ Input Stok Baru</div>', unsafe_allow_html=True)
             mode = st.radio("Metode:", ["Manual", "Upload Excel"], horizontal=True)
             st.divider()
-            
             if mode == "Manual":
                 with st.form("in", clear_on_submit=True):
                     c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
@@ -481,27 +455,18 @@ elif menu == "📦 Gudang":
                     if st.form_submit_button("SIMPAN", type="primary"):
                         if b and s and sn: 
                             added, dups, dup_list = add_stock_batch(st.session_state.user_role, b, s, p, sn.strip().split('\n'))
-                            if added > 0: 
-                                st.toast(f"Berhasil input {added} item baru!", icon="✅")
-                                st.success(f"✅ Berhasil input {added} item baru.")
-                            if dups > 0: 
-                                st.toast(f"Ada {dups} item duplikat ditolak.", icon="⚠️")
-                                st.error(f"❌ Gagal {dups} item karena Duplikat.")
-                                st.write("List Duplikat:", dup_list)
+                            if added > 0: st.toast(f"Berhasil input {added} item baru!", icon="✅"); st.success(f"✅ Berhasil input {added} item baru.")
+                            if dups > 0: st.toast(f"Ada {dups} item duplikat ditolak.", icon="⚠️"); st.error(f"❌ Gagal {dups} item karena Duplikat."); st.write("List Duplikat:", dup_list)
                             time.sleep(2); st.rerun()
             else:
                 template_df = pd.DataFrame([{'brand': 'SAMSUNG', 'sku': 'GALAXY A55 5G', 'price': 6000000, 'sn': 'SN1001'}])
                 csv_buffer = template_df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Template Excel/CSV", data=csv_buffer, file_name="template_stok.csv", mime="text/csv")
-                
                 uf = st.file_uploader("Upload File CSV/Excel", type=['xlsx','csv'])
                 if uf and st.button("PROSES IMPORT", type="primary"):
                     df = pd.read_csv(uf) if uf.name.endswith('.csv') else pd.read_excel(uf)
                     ok, added, dups = import_stock_from_df(st.session_state.user_role, df)
-                    if ok: 
-                        st.toast(f"Import Selesai! (+{added})", icon="✅")
-                        st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}")
-                        time.sleep(2); st.rerun()
+                    if ok: st.toast(f"Import Selesai! (+{added})", icon="✅"); st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}"); time.sleep(2); st.rerun()
                     else: st.error(added)
             st.markdown('</div>', unsafe_allow_html=True)
         else: st.warning("Khusus Admin")
@@ -527,21 +492,15 @@ elif menu == "📦 Gudang":
                     for i, r in de.iterrows():
                         with st.expander(f"{r['sku']} ({r['sn']})"):
                             np = st.number_input("Harga", value=int(r['price']), key=f"p{r['sn']}")
-                            if st.button("Update", key=f"u{r['sn']}"): 
-                                update_stock_price(r['sn'], np)
-                                st.toast("Harga berhasil diupdate!", icon="✅")
-                                time.sleep(1); st.rerun()
-                            if st.button("Hapus", key=f"d{r['sn']}", type="primary"): 
-                                delete_stock(r['sn'])
-                                st.toast("Data berhasil dihapus!", icon="🗑️")
-                                time.sleep(1); st.rerun()
+                            if st.button("Update", key=f"u{r['sn']}"): update_stock_price(r['sn'], np); st.toast("Harga berhasil diupdate!", icon="✅"); time.sleep(1); st.rerun()
+                            if st.button("Hapus", key=f"d{r['sn']}", type="primary"): delete_stock(r['sn']); st.toast("Data berhasil dihapus!", icon="🗑️"); time.sleep(1); st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
 # === ADMIN TOOLS ===
 elif menu == "🔧 Admin Tools":
     if st.session_state.user_role == "ADMIN":
         st.title("🔧 Admin Tools")
-        df_master = get_inventory_df() 
+        # df_master sudah diload global
         tab1, tab2 = st.tabs(["📊 Ringkasan", "💾 Database"])
         
         with tab1:
@@ -550,12 +509,10 @@ elif menu == "🔧 Admin Tools":
                 m1, m2 = st.columns(2)
                 m1.metric("Omzet Total", format_rp(df_hist['total_bill'].sum()))
                 m2.metric("Total Transaksi", len(df_hist))
-                
                 st.divider()
                 st.subheader("🕵️‍♀️ Cek Detail Transaksi")
                 trx_options = df_hist['trx_id'].tolist()
                 selected_trx = st.selectbox("Pilih ID Transaksi:", ["-- Pilih --"] + trx_options)
-                
                 if selected_trx != "-- Pilih --":
                     trx_data = df_hist[df_hist['trx_id'] == selected_trx].iloc[0]
                     c_info1, c_info2, c_info3 = st.columns(3)
@@ -563,7 +520,6 @@ elif menu == "🔧 Admin Tools":
                     c_info1.info(f"User: {trx_data['user']}")
                     c_info2.info(f"Waktu: {ts_str}")
                     c_info3.success(f"Total: {format_rp(trx_data['total_bill'])}")
-                    
                     if 'item_details' in trx_data and trx_data['item_details']:
                         items = trx_data['item_details']
                         if isinstance(items, list):
@@ -574,7 +530,6 @@ elif menu == "🔧 Admin Tools":
                             st.dataframe(df_items[cols_avail], use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d")})
                         else: st.warning("Format detail item tidak dikenali.")
                     else: st.warning("Detail item tidak tersedia.")
-                
                 st.divider()
                 st.subheader("Semua Riwayat")
                 st.dataframe(df_hist[['trx_id', 'timestamp', 'user', 'total_bill']], use_container_width=True)
@@ -608,11 +563,9 @@ elif menu == "🔧 Admin Tools":
 
             st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
             hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
-            
             if hapus_opsi != "-- Pilih Tindakan --":
                 st.warning(f"Anda akan melakukan: {hapus_opsi}")
                 pin_konfirm = st.text_input("Masukkan PIN Konfirmasi:", type="password")
-                
                 if st.button("🔥 JALANKAN PENGHAPUSAN 🔥", type="primary", use_container_width=True):
                     if pin_konfirm == "123456":
                         with st.spinner("Sedang menghapus..."):
