@@ -1,9 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.0 Template & Toasts)
+# APLIKASI: SN TRACKER PRO (V6.1 Transaction Inspector)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: 
-# 1. Tombol Download Template Excel/CSV untuk Import
-# 2. Notifikasi Pop-up (Toast) di setiap aktivitas
+# UPDATE: Fitur Cek Detail Transaksi (Lihat SKU/SN per Struk)
 # ==========================================
 
 import streamlit as st
@@ -46,12 +44,10 @@ if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = F
 # --- 4. CSS CUSTOMIZATION (FULLY DYNAMIC) ---
 st.markdown("""
     <style>
-    /* VARIABEL DINAMIS (Mengikut Tema Streamlit) */
+    /* VARIABEL DINAMIS */
     :root { 
         --brand-blue: #0095DA; 
         --brand-yellow: #F99D1C; 
-        
-        /* Ini adalah "Jembatan" ke warna tema user */
         --card-bg: var(--secondary-background-color);
         --text-color: var(--text-color);
         --border-color: rgba(128, 128, 128, 0.2);
@@ -60,11 +56,8 @@ st.markdown("""
     /* TOMBOL UTAMA */
     div.stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #0095DA 0%, #007bb5 100%);
-        border: none; 
-        color: white !important; 
-        font-weight: 700;
-        padding: 10px 20px; 
-        border-radius: 8px;
+        border: none; color: white !important; font-weight: 700;
+        padding: 10px 20px; border-radius: 8px;
         box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         transition: all 0.3s ease;
     }
@@ -75,103 +68,51 @@ st.markdown("""
     
     /* TOMBOL LOGOUT */
     div.stButton > button[data-testid="baseButton-secondary"] {
-        border: 1px solid #ff4b4b; 
-        color: #ff4b4b;
-        border-radius: 8px;
+        border: 1px solid #ff4b4b; color: #ff4b4b; border-radius: 8px;
     }
     div.stButton > button[data-testid="baseButton-secondary"]:hover {
-        background-color: #ff4b4b; 
-        color: white;
-        border-color: #ff4b4b;
+        background-color: #ff4b4b; color: white; border-color: #ff4b4b;
     }
 
-    /* CARD PRODUK KASIR (DINAMIS) */
+    /* CARD PRODUK KASIR */
     .product-card-container {
-        background-color: var(--card-bg); /* Berubah sesuai mode */
-        padding: 25px;
-        border-radius: 12px;
-        border: 1px solid var(--border-color);
-        border-left: 6px solid var(--brand-blue);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-        color: var(--text-color);
+        background-color: var(--card-bg); padding: 25px; border-radius: 12px;
+        border: 1px solid var(--border-color); border-left: 6px solid var(--brand-blue);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; color: var(--text-color);
     }
-    .product-title {
-        font-size: 22px;
-        font-weight: 700;
-        margin-bottom: 5px;
-    }
-    /* Badge menggunakan transparansi agar cocok di dark/light */
+    .product-title { font-size: 22px; font-weight: 700; margin-bottom: 5px; }
     .product-badge {
-        background-color: rgba(0, 149, 218, 0.15);
-        color: var(--brand-blue);
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 700;
-        margin-right: 5px;
+        background-color: rgba(0, 149, 218, 0.15); color: var(--brand-blue);
+        padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; margin-right: 5px;
     }
     .product-stock {
-        background-color: rgba(46, 125, 50, 0.15);
-        color: #4caf50;
-        padding: 4px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 700;
+        background-color: rgba(46, 125, 50, 0.15); color: #4caf50;
+        padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 700;
     }
-    .big-price-tag {
-        font-size: 36px;
-        font-weight: 800;
-        color: var(--brand-yellow);
-        margin-top: 15px;
-        margin-bottom: 10px;
-    }
+    .big-price-tag { font-size: 36px; font-weight: 800; color: var(--brand-yellow); margin-top: 15px; margin-bottom: 10px; }
 
-    /* METRIC BOX (Dashboard Gudang) */
+    /* METRIC BOX */
     .metric-box {
-        background-color: var(--card-bg);
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid var(--border-color);
-        border-left: 4px solid var(--brand-blue);
-        text-align: center;
-        color: var(--text-color);
+        background-color: var(--card-bg); padding: 20px; border-radius: 12px;
+        border: 1px solid var(--border-color); border-left: 4px solid var(--brand-blue);
+        text-align: center; color: var(--text-color);
     }
     .metric-label { font-size: 14px; opacity: 0.7; font-weight: 600; text-transform: uppercase; }
     .metric-value { font-size: 28px; font-weight: 800; margin-top: 5px; }
 
     /* ADMIN TOOLS CARDS */
     .admin-card-blue {
-        padding: 20px;
-        border: 1px solid #0095DA;
-        background-color: rgba(0, 149, 218, 0.05);
-        border-radius: 10px;
-        margin-bottom: 15px;
-        color: var(--text-color);
+        padding: 20px; border: 1px solid #0095DA; background-color: rgba(0, 149, 218, 0.05);
+        border-radius: 10px; margin-bottom: 15px; color: var(--text-color);
     }
     .admin-card-red {
-        padding: 20px;
-        border: 1px solid #ff4b4b;
-        background-color: rgba(255, 75, 75, 0.05);
-        border-radius: 10px;
-        margin-bottom: 15px;
-        color: var(--text-color);
+        padding: 20px; border: 1px solid #ff4b4b; background-color: rgba(255, 75, 75, 0.05);
+        border-radius: 10px; margin-bottom: 15px; color: var(--text-color);
     }
-    .admin-header {
-        font-weight: 700;
-        font-size: 18px;
-        margin-bottom: 10px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
+    .admin-header { font-weight: 700; font-size: 18px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
     
     .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
-    div[data-testid="stExpander"] { 
-        border: 1px solid var(--border-color); 
-        background-color: var(--card-bg);
-        border-radius: 8px; 
-    }
+    div[data-testid="stExpander"] { border: 1px solid var(--border-color); background-color: var(--card-bg); border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -316,7 +257,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.0 Template & Toasts", unsafe_allow_html=True)
+            st.caption("v6.1 Transaction Inspector", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -514,19 +455,9 @@ elif menu == "📦 Gudang":
                                 st.write("List Duplikat:", dup_list)
                             time.sleep(2); st.rerun()
             else:
-                # TOMBOL DOWNLOAD TEMPLATE CSV
-                template_df = pd.DataFrame([
-                    {'brand': 'SAMSUNG', 'sku': 'GALAXY A55 5G', 'price': 6000000, 'sn': 'SN1001'},
-                    {'brand': 'APPLE', 'sku': 'IPHONE 15', 'price': 15000000, 'sn': 'SN1002'}
-                ])
+                template_df = pd.DataFrame([{'brand': 'SAMSUNG', 'sku': 'GALAXY A55 5G', 'price': 6000000, 'sn': 'SN1001'}])
                 csv_buffer = template_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Template Excel/CSV",
-                    data=csv_buffer,
-                    file_name="template_stok.csv",
-                    mime="text/csv",
-                    help="Gunakan file ini sebagai contoh format upload."
-                )
+                st.download_button("📥 Download Template Excel/CSV", data=csv_buffer, file_name="template_stok.csv", mime="text/csv")
                 
                 uf = st.file_uploader("Upload File CSV/Excel", type=['xlsx','csv'])
                 if uf and st.button("PROSES IMPORT", type="primary"):
@@ -584,6 +515,50 @@ elif menu == "🔧 Admin Tools":
                 m1, m2 = st.columns(2)
                 m1.metric("Omzet Total", format_rp(df_hist['total_bill'].sum()))
                 m2.metric("Total Transaksi", len(df_hist))
+                
+                # --- FITUR INSPEKSI TRANSAKSI (BARU) ---
+                st.divider()
+                st.subheader("🕵️‍♀️ Cek Detail Transaksi")
+                
+                # Dropdown pilih Trx ID
+                trx_options = df_hist['trx_id'].tolist()
+                selected_trx = st.selectbox("Pilih ID Transaksi untuk melihat detail:", ["-- Pilih --"] + trx_options)
+                
+                if selected_trx != "-- Pilih --":
+                    # Ambil data baris terpilih
+                    trx_data = df_hist[df_hist['trx_id'] == selected_trx].iloc[0]
+                    
+                    # Tampilkan Info Header
+                    c_info1, c_info2, c_info3 = st.columns(3)
+                    ts_str = pd.to_datetime(trx_data['timestamp']).strftime("%d %b %Y, %H:%M")
+                    c_info1.info(f"User: {trx_data['user']}")
+                    c_info2.info(f"Waktu: {ts_str}")
+                    c_info3.success(f"Total: {format_rp(trx_data['total_bill'])}")
+                    
+                    # Tampilkan Tabel Detail Item
+                    if 'item_details' in trx_data and trx_data['item_details']:
+                        # item_details di Supabase sudah otomatis jadi list of dict
+                        items = trx_data['item_details']
+                        if isinstance(items, list):
+                            df_items = pd.DataFrame(items)
+                            
+                            # Filter kolom agar rapi
+                            cols_wanted = ['sku', 'brand', 'sn', 'price']
+                            cols_avail = [c for c in cols_wanted if c in df_items.columns]
+                            
+                            st.write("##### 📋 Daftar Barang Terjual:")
+                            st.dataframe(
+                                df_items[cols_avail], 
+                                use_container_width=True,
+                                column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d")}
+                            )
+                        else:
+                            st.warning("Format detail item tidak dikenali.")
+                    else:
+                        st.warning("Detail item tidak tersedia untuk transaksi ini.")
+                
+                st.divider()
+                st.subheader("Semua Riwayat")
                 st.dataframe(df_hist[['trx_id', 'timestamp', 'user', 'total_bill']], use_container_width=True)
             else: st.info("Belum ada transaksi")
 
@@ -614,7 +589,6 @@ elif menu == "🔧 Admin Tools":
             st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
-            # Pilihan Hapus
             hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
             
             if hapus_opsi != "-- Pilih Tindakan --":
