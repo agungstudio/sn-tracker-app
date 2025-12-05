@@ -201,7 +201,7 @@ def login_page():
     c1, c2, c3 = st.columns([1,1.2,1])
     with c2:
         with st.container(border=True):
-            st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
+            st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
             st.caption("v4.1 Final Production", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
@@ -454,4 +454,5 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
                                 time.sleep(2); st.rerun()
                         else: st.error("PIN SALAH! Akses ditolak.")
     else: st.error("Akses Khusus Admin")
+
 
