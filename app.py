@@ -1,9 +1,10 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.1 Final Polish)
+# APLIKASI: SN TRACKER PRO (V5.2 Smart Filter)
 # ENGINE: Supabase (PostgreSQL)
 # FIX: 
-# 1. Anti-Overwrite (SN Lama tidak akan tertimpa)
-# 2. Form Input Otomatis Bersih setelah simpan
+# 1. Force Uppercase (sn123 -> SN123)
+# 2. Trim Spasi (SN 123_ -> SN123)
+# 3. Laporan Duplikat yang Jelas
 # ==========================================
 
 import streamlit as st
@@ -66,7 +67,6 @@ st.markdown("""
 # --- 5. FUNGSI LOGIC SUPABASE ---
 
 def clear_cache():
-    """Hapus cache agar data terupdate"""
     get_inventory_df.clear()
     get_history_df.clear()
     get_import_logs.clear()
@@ -96,58 +96,98 @@ def get_import_logs():
     response = supabase.table('import_logs').select("*").order('timestamp', desc=True).limit(20).execute()
     return response.data
 
-# --- WRITE DATA (CRUD) ---
+# --- WRITE DATA (SMART CHECK) ---
 
 def add_stock_batch(user, brand, sku, price, sn_list):
-    """Insert bulk ke Supabase (Anti-Overwrite)"""
-    data_to_insert = []
-    log_items = []
-    
+    """
+    Input Manual dengan:
+    1. Sanitasi (Upper + Strip)
+    2. Cek Duplikat Eksplisit
+    """
+    # 1. Bersihkan Input User (Standardisasi)
+    clean_sn_list = []
     for sn in sn_list:
-        sn = sn.strip()
-        if sn:
+        clean_sn = sn.strip().upper() # Hapus spasi & paksa huruf besar
+        if clean_sn:
+            clean_sn_list.append(clean_sn)
+            
+    # Hapus duplikat internal (jika user copy paste SN sama 2x di inputan)
+    clean_sn_list = list(set(clean_sn_list))
+    
+    if not clean_sn_list:
+        return 0, 0, []
+
+    # 2. Cek database: Mana SN yang SUDAH ADA?
+    # Kita ambil daftar SN yang ada di database yang COCOK dengan inputan
+    try:
+        response = supabase.table('inventory').select("sn").in_("sn", clean_sn_list).execute()
+        existing_sns = [item['sn'] for item in response.data]
+    except:
+        existing_sns = []
+
+    # 3. Pisahkan: Mana Baru, Mana Duplikat
+    new_items = []
+    log_items = []
+    duplicate_items = []
+    
+    for sn in clean_sn_list:
+        if sn in existing_sns:
+            duplicate_items.append(sn)
+        else:
+            # Data Baru
             item = {
                 'sn': sn, 'brand': brand, 'sku': sku, 
                 'price': int(price), 'status': 'Ready', 
                 'created_at': datetime.now().isoformat()
             }
-            data_to_insert.append(item)
+            new_items.append(item)
             log_items.append(item)
     
-    if data_to_insert:
+    # 4. Insert HANYA yang baru
+    if new_items:
         try:
-            # FIX V5.1: ignore_duplicates=True
-            # Artinya: Jika SN sudah ada, JANGAN ditimpa/update. Biarkan data lama.
-            # Hanya SN baru yang akan masuk.
-            supabase.table('inventory').upsert(
-                data_to_insert, 
-                on_conflict="sn", 
-                ignore_duplicates=True
-            ).execute()
+            supabase.table('inventory').insert(new_items).execute()
             
-            # Catat Log
+            # Log
             log_data = {
                 'timestamp': datetime.now().isoformat(), 'user': user,
-                'method': "Manual Input", 'total_items': len(data_to_insert),
+                'method': "Manual Input", 'total_items': len(new_items),
                 'items_detail': log_items
             }
             supabase.table('import_logs').insert(log_data).execute()
             clear_cache()
-            return len(data_to_insert)
         except Exception as e:
             st.error(f"Error Database: {e}")
-            return 0
-    return 0
+            return 0, 0, []
+
+    return len(new_items), len(duplicate_items), duplicate_items
 
 def import_stock_from_df(user, df):
+    # Logika sama untuk Excel: Standardisasi -> Cek Duplikat -> Insert Baru
     df.columns = [c.lower().strip() for c in df.columns]
-    data_to_insert = []
     
-    for index, row in df.iterrows():
-        sn_val = str(row['sn']).strip()
-        if not sn_val or sn_val.lower() == 'nan': continue
+    # Sanitasi DataFrame
+    df['sn'] = df['sn'].astype(str).str.strip().str.upper()
+    df = df.drop_duplicates(subset=['sn']) # Hapus duplikat di file excelnya sendiri
+    
+    sn_list_excel = df['sn'].tolist()
+    
+    # Cek Existing di DB (Batch check per 1000 agar URL tidak kepanjangan)
+    existing_sns = []
+    batch_size = 500
+    for i in range(0, len(sn_list_excel), batch_size):
+        batch = sn_list_excel[i:i+batch_size]
+        res = supabase.table('inventory').select("sn").in_("sn", batch).execute()
+        existing_sns.extend([x['sn'] for x in res.data])
+        
+    # Filter DataFrame
+    df_new = df[~df['sn'].isin(existing_sns)]
+    df_dup = df[df['sn'].isin(existing_sns)]
+    
+    data_to_insert = []
+    for index, row in df_new.iterrows():
         item = {
-            'sn': sn_val, 'brand': str(row['brand']), 'sku': str(row['sku']),
+            'sn': row['sn'], 'brand': str(row['brand']), 'sku': str(row['sku']),
             'price': int(row['price']), 'status': 'Ready', 
             'created_at': datetime.now().isoformat()
         }
@@ -155,15 +195,10 @@ def import_stock_from_df(user, df):
     
     if data_to_insert:
         try:
-            batch_size = 1000
-            for i in range(0, len(data_to_insert), batch_size):
-                batch = data_to_insert[i:i + batch_size]
-                # FIX V5.1: ignore_duplicates=True (Anti-Overwrite)
-                supabase.table('inventory').upsert(
-                    batch, 
-                    on_conflict="sn", 
-                    ignore_duplicates=True
-                ).execute()
+            # Batch Insert
+            for i in range(0, len(data_to_insert), 1000):
+                batch = data_to_insert[i:i + 1000]
+                supabase.table('inventory').insert(batch).execute()
             
             log_data = {
                 'timestamp': datetime.now().isoformat(), 'user': user,
@@ -172,10 +207,11 @@ def import_stock_from_df(user, df):
             }
             supabase.table('import_logs').insert(log_data).execute()
             clear_cache()
-            return True, f"Berhasil Import {len(data_to_insert)} Data!"
+            return True, len(data_to_insert), len(df_dup)
         except Exception as e:
-            return False, f"Error: {e}"
-    return False, "Data Kosong"
+            return False, str(e), 0
+            
+    return True, 0, len(df_dup)
 
 def process_checkout(user, cart_items):
     total = sum(item['price'] for item in cart_items)
@@ -222,7 +258,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.1 Final Polish", unsafe_allow_html=True)
+            st.caption("v5.2 Smart Filter", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -381,18 +417,28 @@ elif menu == "📦 Gudang":
                 # FIX V5.1: clear_on_submit=True
                 with st.form("in", clear_on_submit=True):
                     c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
-                    sn = st.text_area("SN (Enter pemisah):")
+                    sn = st.text_area("List SN (Enter pemisah):", help="Sistem akan otomatis ubah ke Huruf Besar & Tolak Duplikat.")
                     if st.form_submit_button("SIMPAN", type="primary"):
                         if b and s and sn: 
-                            cnt = add_stock_batch(st.session_state.user_role, b, s, p, sn.strip().split('\n'))
-                            if cnt > 0: st.success(f"Masuk {cnt} item!"); time.sleep(1); st.rerun()
+                            added, dups, dup_list = add_stock_batch(st.session_state.user_role, b, s, p, sn.strip().split('\n'))
+                            
+                            # Laporan Hasil yang Jelas
+                            if added > 0: st.success(f"✅ Berhasil input {added} item baru.")
+                            if dups > 0: 
+                                st.error(f"❌ Gagal {dups} item karena Duplikat (SN sudah ada).")
+                                st.write("List Duplikat:", dup_list)
+                            
+                            time.sleep(2)
+                            st.rerun()
             else:
                 uf = st.file_uploader("Excel/CSV", type=['xlsx','csv'])
                 if uf and st.button("PROSES", type="primary"):
                     df = pd.read_csv(uf) if uf.name.endswith('.csv') else pd.read_excel(uf)
-                    ok, msg = import_stock_from_df(st.session_state.user_role, df)
-                    if ok: st.success(msg); time.sleep(2); st.rerun()
-                    else: st.error(msg)
+                    ok, added, dups = import_stock_from_df(st.session_state.user_role, df)
+                    if ok: 
+                        st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}")
+                        time.sleep(2); st.rerun()
+                    else: st.error(added)
         else: st.warning("Khusus Admin")
 
     with tabs[3]:
@@ -439,7 +485,6 @@ elif menu == "🔧 Admin Tools":
 
         with tab2:
             st.info("Backup Data")
-            # Fitur download Excel sederhana
             if not df_master.empty:
                 out_stok = io.BytesIO()
                 with pd.ExcelWriter(out_stok, engine='xlsxwriter') as writer:
