@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V3.9 Robust Backup)
+# APLIKASI: SN TRACKER PRO (V4.0 Final UI Fix)
 # ENGINE: Google Firestore
-# FIX: Backup Transaksi Anti-Gagal (Support Data Lama & Baru)
+# FIX: UI Danger Zone Rapi & Sorting SN Sempurna
 # ==========================================
 
 import streamlit as st
@@ -79,15 +79,13 @@ st.markdown("""
         background-color: rgba(255, 0, 0, 0.1); color: #e53935; padding: 10px; 
         border-radius: 5px; border: 1px solid #ef9a9a; margin-bottom: 10px; font-weight: bold; font-size: 14px;
     }
-    .danger-zone {
-        border: 2px solid #e53935; background-color: #ffebee; padding: 20px; border-radius: 10px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 5. FUNGSI LOGIC DATABASE & UTILS ---
 
 def natural_sort_key(s):
+    # Logika sorting manusia: 1, 2, 10 (bukan 1, 10, 2)
     return [int(text) if text.isdigit() else text.lower()
             for text in re.split('([0-9]+)', s)]
 
@@ -188,7 +186,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("v3.9 Robust Backup", unsafe_allow_html=True)
+            st.caption("v4.0 Final UI", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -255,6 +253,7 @@ if menu == "🛒 Transaksi":
                         col_sn, col_add = st.columns([2, 1])
                         
                         with col_sn:
+                            # Natural Sorting (1, 2, 9, 10)
                             sn_list_sorted = sorted(avail['sn'].tolist(), key=natural_sort_key)
                             p_sn = st.multiselect("Pilih Serial Number (SN):", sn_list_sorted, placeholder="Pilih SN...")
                             st.write(f"Stok: **{len(avail)}** Unit")
@@ -389,7 +388,7 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
                 st.markdown("### 1. Backup Data (Excel)")
                 st.caption("Download data sebelum melakukan reset!")
                 
-                # --- DOWNLOAD STOK (CLEAN DATETIME) ---
+                # --- DOWNLOAD STOK ---
                 if not df_master.empty:
                     out_stok = io.BytesIO()
                     df_down_stok = df_master.copy()
@@ -400,51 +399,43 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
                         df_down_stok.to_excel(writer, index=False, sheet_name='Stok_Gudang')
                     st.download_button("📥 Download Master Stok (.xlsx)", out_stok.getvalue(), "Backup_Stok.xlsx", "application/vnd.ms-excel", use_container_width=True)
                 
-                # --- FIX ROBUST: DOWNLOAD HISTORY ---
+                # --- DOWNLOAD HISTORY ---
                 df_hist_all = get_history_df()
                 if not df_hist_all.empty:
                     df_clean = df_hist_all.copy()
-                    
-                    # 1. Handle Timezone (Wajib)
                     if 'timestamp' in df_clean.columns:
                         df_clean['waktu_lokal'] = pd.to_datetime(df_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
                     else:
                         df_clean['waktu_lokal'] = "-"
-
-                    # 2. Handle Kolom Hilang (Support Legacy Data V1.0 - V3.0)
                     target_cols = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
                     for col in target_cols:
-                        if col not in df_clean.columns:
-                            # Jika kolom tidak ada, isi default value agar tidak error
-                            df_clean[col] = 0 if col in ['total_bill', 'items_count'] else "-"
-
+                        if col not in df_clean.columns: df_clean[col] = 0 if col in ['total_bill', 'items_count'] else "-"
                     out_hist = io.BytesIO()
                     with pd.ExcelWriter(out_hist, engine='xlsxwriter') as writer:
                         df_clean[target_cols].to_excel(writer, index=False, sheet_name='Riwayat_Transaksi')
-                    
                     st.download_button("📥 Download Riwayat Transaksi (.xlsx)", out_hist.getvalue(), "Backup_Transaksi.xlsx", "application/vnd.ms-excel", use_container_width=True)
                 else:
-                    st.warning("Belum ada data transaksi untuk dibackup.")
+                    st.warning("Belum ada data transaksi.")
 
             with c_danger:
-                st.markdown('<div class="danger-zone">', unsafe_allow_html=True)
-                st.markdown("### 2. Danger Zone (Hapus Data)")
-                st.warning("⚠️ Perhatian: Data yang dihapus TIDAK BISA kembali.")
-                action = st.radio("Pilih Tindakan:", ["Hapus Riwayat Transaksi Saja", "Hapus Semua Stok Barang", "FACTORY RESET (Hapus Semuanya)"])
-                pin_confirm = st.text_input("Masukkan PIN Keamanan:", type="password", placeholder="PIN Admin")
-                if st.button("🔥 EKSEKUSI PENGHAPUSAN", type="primary", use_container_width=True):
-                    if pin_confirm == "123456":
-                        with st.spinner("Sedang menghapus data di Cloud..."):
-                            if action == "Hapus Riwayat Transaksi Saja":
-                                count = delete_collection_batch('transactions', 100)
-                                st.success(f"Berhasil menghapus {count} data transaksi!")
-                            elif action == "Hapus Semua Stok Barang":
-                                count = delete_collection_batch('inventory', 100)
-                                st.success(f"Berhasil mengosongkan gudang ({count} item)!")
-                            elif action == "FACTORY RESET (Hapus Semuanya)":
-                                c1 = delete_collection_batch('transactions', 100); c2 = delete_collection_batch('inventory', 100)
-                                st.success(f"RESET TOTAL BERHASIL! ({c1} Trx, {c2} Stok)")
-                            time.sleep(2); st.rerun()
-                    else: st.error("PIN SALAH! Akses ditolak.")
-                st.markdown('</div>', unsafe_allow_html=True)
+                # PERBAIKAN TAMPILAN: MENGGUNAKAN ST.ERROR UNTUK HEADER MERAH
+                st.error("### 2. Danger Zone (Hapus Data)")
+                with st.container(border=True):
+                    st.warning("⚠️ Perhatian: Data yang dihapus TIDAK BISA kembali.")
+                    action = st.radio("Pilih Tindakan:", ["Hapus Riwayat Transaksi Saja", "Hapus Semua Stok Barang", "FACTORY RESET (Hapus Semuanya)"])
+                    pin_confirm = st.text_input("Masukkan PIN Keamanan:", type="password", placeholder="PIN Admin")
+                    if st.button("🔥 EKSEKUSI PENGHAPUSAN", type="primary", use_container_width=True):
+                        if pin_confirm == "123456":
+                            with st.spinner("Sedang menghapus data di Cloud..."):
+                                if action == "Hapus Riwayat Transaksi Saja":
+                                    count = delete_collection_batch('transactions', 100)
+                                    st.success(f"Berhasil menghapus {count} data transaksi!")
+                                elif action == "Hapus Semua Stok Barang":
+                                    count = delete_collection_batch('inventory', 100)
+                                    st.success(f"Berhasil mengosongkan gudang ({count} item)!")
+                                elif action == "FACTORY RESET (Hapus Semuanya)":
+                                    c1 = delete_collection_batch('transactions', 100); c2 = delete_collection_batch('inventory', 100)
+                                    st.success(f"RESET TOTAL BERHASIL! ({c1} Trx, {c2} Stok)")
+                                time.sleep(2); st.rerun()
+                        else: st.error("PIN SALAH! Akses ditolak.")
     else: st.error("Akses Khusus Admin")
