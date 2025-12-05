@@ -1,8 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.4 Low Stock Reborn)
+# APLIKASI: SN TRACKER PRO (V6.5 Clean Alert)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Mengembalikan fitur "Peringatan Stok Menipis"
-# di Sidebar karena Supabase aman (Unlimited Reads).
+# UPDATE: Detail stok menipis dipindah dari Sidebar
+# ke Dashboard Gudang agar lebih lega & rapi.
 # ==========================================
 
 import streamlit as st
@@ -257,7 +257,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.4 Low Stock Reborn", unsafe_allow_html=True)
+            st.caption("v6.5 Clean Alert UI", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -270,7 +270,6 @@ def login_page():
 if not st.session_state.logged_in: login_page(); st.stop()
 
 # --- 7. SIDEBAR ---
-# LOAD DATA GLOBAL UNTUK SIDEBAR & SEMUA HALAMAN
 df_master = get_inventory_df()
 
 with st.sidebar:
@@ -285,7 +284,7 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
         
-    # --- FITUR LOW STOCK ALERT DIKEMBALIKAN DI SINI ---
+    # ALERT RINGKAS DI SIDEBAR (Tanpa Detail)
     if not df_master.empty:
         df_ready = df_master[df_master['status'] == 'Ready']
         if not df_ready.empty:
@@ -295,13 +294,10 @@ with st.sidebar:
             if not stok_tipis.empty:
                 st.markdown(f"""
                 <div class="sidebar-alert">
-                    ⚠️ {len(stok_tipis)} Barang Stok Menipis!
+                    ⚠️ <b>{len(stok_tipis)} Barang Menipis!</b><br>
+                    <span style="font-size:12px; opacity:0.8">Cek detail di menu Gudang</span>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                with st.expander("Lihat Detail"):
-                    st.dataframe(stok_tipis, hide_index=True, use_container_width=True)
-    # --------------------------------------------------
 
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
@@ -344,6 +340,7 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
+                        # Calculate avail first
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
@@ -414,6 +411,7 @@ elif menu == "📦 Gudang":
     # df_master sudah diload di global, jadi aman
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
+    # TAB 1: DASHBOARD
     with tabs[0]:
         st.subheader("Ringkasan Stok")
         if not df_master.empty:
@@ -421,13 +419,40 @@ elif menu == "📦 Gudang":
             if not df_ready.empty:
                 stok_rekap = df_ready.groupby(['brand', 'sku', 'price']).size().reset_index(name='Total Stok')
                 stok_rekap = stok_rekap.sort_values(by=['brand', 'sku'])
+                
+                # --- AREA PERINGATAN STOK MENIPIS (BARU) ---
+                stok_tipis = stok_rekap[stok_rekap['Total Stok'] < 5]
+                if not stok_tipis.empty:
+                    st.error(f"⚠️ PERHATIAN: {len(stok_tipis)} Barang Stoknya Menipis (< 5 unit)")
+                    st.dataframe(
+                        stok_tipis, 
+                        use_container_width=True,
+                        column_config={
+                            "price": st.column_config.NumberColumn("Harga", format="Rp %d"),
+                            "Total Stok": st.column_config.ProgressColumn("Sisa Stok", format="%d", min_value=0, max_value=5, help="Segera restock!")
+                        },
+                        hide_index=True
+                    )
+                    st.markdown("---")
+                # ---------------------------------------------
+
                 c1, c2, c3 = st.columns(3)
                 with c1: st.markdown(f"""<div class="metric-box"><div class="metric-label">TOTAL UNIT</div><div class="metric-value">{len(df_ready)}</div></div>""", unsafe_allow_html=True)
                 with c2: st.markdown(f"""<div class="metric-box"><div class="metric-label">NILAI ASET</div><div class="metric-value">{format_rp(df_ready['price'].sum())}</div></div>""", unsafe_allow_html=True)
                 with c3: st.markdown(f"""<div class="metric-box"><div class="metric-label">JENIS PRODUK</div><div class="metric-value">{len(stok_rekap)}</div></div>""", unsafe_allow_html=True)
+                
                 st.markdown("<br>", unsafe_allow_html=True)
+                
                 max_stok = int(stok_rekap['Total Stok'].max())
-                st.dataframe(stok_rekap, use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d"), "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)}, hide_index=True)
+                st.dataframe(
+                    stok_rekap, 
+                    use_container_width=True, 
+                    column_config={
+                        "price": st.column_config.NumberColumn("Harga", format="Rp %d"), 
+                        "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)
+                    }, 
+                    hide_index=True
+                )
             else: st.info("Gudang Kosong.")
         else: st.info("Database Kosong.")
 
@@ -500,7 +525,7 @@ elif menu == "📦 Gudang":
 elif menu == "🔧 Admin Tools":
     if st.session_state.user_role == "ADMIN":
         st.title("🔧 Admin Tools")
-        # df_master sudah diload global
+        df_master = get_inventory_df() 
         tab1, tab2 = st.tabs(["📊 Ringkasan", "💾 Database"])
         
         with tab1:
@@ -563,9 +588,11 @@ elif menu == "🔧 Admin Tools":
 
             st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
             hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
+            
             if hapus_opsi != "-- Pilih Tindakan --":
                 st.warning(f"Anda akan melakukan: {hapus_opsi}")
                 pin_konfirm = st.text_input("Masukkan PIN Konfirmasi:", type="password")
+                
                 if st.button("🔥 JALANKAN PENGHAPUSAN 🔥", type="primary", use_container_width=True):
                     if pin_konfirm == "123456":
                         with st.spinner("Sedang menghapus..."):
