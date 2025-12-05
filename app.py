@@ -1,7 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V4.5 Logout Confirm)
+# APLIKASI: SN TRACKER PRO (V4.6 Scrollable Cart)
 # ENGINE: Google Firestore
-# UPDATE: Tombol Logout Pakai Konfirmasi (Anti-Kepencet)
+# FIX: Keranjang Belanja di-limit tingginya (Scrollable)
+# agar tombol Bayar tidak turun jauh ke bawah.
 # ==========================================
 
 import streamlit as st
@@ -65,7 +66,6 @@ st.markdown("""
     div.stButton > button[kind="primary"]:hover {
         background-color: #007bb5;
     }
-    /* Tombol Logout Khusus (Merah Tipis) */
     div.stButton > button[data-testid="baseButton-secondary"] {
         border-color: #ff4b4b; color: #ff4b4b;
     }
@@ -190,7 +190,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v4.5 Logout Confirmation", unsafe_allow_html=True)
+            st.caption("v4.6 Scrollable Cart", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -222,7 +222,6 @@ with st.sidebar:
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
     
-    # --- LOGOUT DENGAN KONFIRMASI ---
     if st.session_state.confirm_logout:
         st.warning("Yakin ingin keluar?")
         c_yes, c_no = st.columns(2)
@@ -280,26 +279,32 @@ if menu == "🛒 Kasir":
 
     with c_cart:
         st.markdown('<div class="step-header">2️⃣ Keranjang</div>', unsafe_allow_html=True)
-        with st.container(border=True):
-            if st.session_state.keranjang:
-                tot = 0
+        if st.session_state.keranjang:
+            # --- AREA SCROLLABLE (ITEM LIST) ---
+            with st.container(height=450, border=True):
                 st.caption("Klik tombol kecil di kanan SN untuk Copy.")
                 for i, x in enumerate(st.session_state.keranjang):
-                    tot += x['price']
                     st.markdown(f"**{x['sku']}**")
                     c_sn_code, c_price = st.columns([2.5, 1]) 
                     with c_sn_code: st.code(x['sn'], language="text") 
                     with c_price: st.markdown(f"<div style='text-align:right; margin-top: 5px; font-weight:bold;'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
                     st.divider()
+            
+            # --- AREA FIXED (TOTAL & TOMBOL) ---
+            with st.container(border=True):
+                tot = sum(item['price'] for item in st.session_state.keranjang)
                 st.markdown(f"<div style='text-align:right'>Total Tagihan<br><span class='big-price'>{format_rp(tot)}</span></div>", unsafe_allow_html=True)
+                
                 if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
                     st.session_state.keranjang = []; st.balloons(); st.success("Transaksi Sukses!")
                     st.session_state.last_trx = {'id': tid, 'total': tbil}
                     st.rerun()
+
                 if st.button("❌ Batal", use_container_width=True):
                     st.session_state.keranjang = []; st.rerun()
-            else:
+        else:
+            with st.container(border=True):
                 if 'last_trx' in st.session_state and st.session_state.last_trx:
                     st.success("✅ Transaksi Berhasil!")
                     st.write(f"ID: {st.session_state.last_trx['id']}")
