@@ -1,5 +1,5 @@
 streamlit
-firebase-admin
+supabase
 pandas
 plotly
 xlsxwriter
