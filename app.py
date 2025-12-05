@@ -1,7 +1,9 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.0 Supabase)
-# BASE: V4.6 (Scrollable Cart + Copy SN)
-# ENGINE: Supabase (PostgreSQL) - QUOTA FREE
+# APLIKASI: SN TRACKER PRO (V5.1 Final Polish)
+# ENGINE: Supabase (PostgreSQL)
+# FIX: 
+# 1. Anti-Overwrite (SN Lama tidak akan tertimpa)
+# 2. Form Input Otomatis Bersih setelah simpan
 # ==========================================
 
 import streamlit as st
@@ -77,8 +79,6 @@ def format_rp(val): return f"Rp {val:,.0f}".replace(",", ".")
 # --- READ DATA (Cached) ---
 @st.cache_data(ttl=300)
 def get_inventory_df():
-    # Ambil semua data inventory
-    # Supabase select * from inventory
     response = supabase.table('inventory').select("*").execute()
     data = response.data
     if not data: return pd.DataFrame(columns=['brand', 'sku', 'price', 'sn', 'status'])
@@ -99,7 +99,7 @@ def get_import_logs():
 # --- WRITE DATA (CRUD) ---
 
 def add_stock_batch(user, brand, sku, price, sn_list):
-    """Insert bulk ke Supabase (Lebih cepat dr Firestore)"""
+    """Insert bulk ke Supabase (Anti-Overwrite)"""
     data_to_insert = []
     log_items = []
     
@@ -115,15 +115,21 @@ def add_stock_batch(user, brand, sku, price, sn_list):
             log_items.append(item)
     
     if data_to_insert:
-        # Supabase support bulk insert langsung
         try:
-            supabase.table('inventory').upsert(data_to_insert).execute()
+            # FIX V5.1: ignore_duplicates=True
+            # Artinya: Jika SN sudah ada, JANGAN ditimpa/update. Biarkan data lama.
+            # Hanya SN baru yang akan masuk.
+            supabase.table('inventory').upsert(
+                data_to_insert, 
+                on_conflict="sn", 
+                ignore_duplicates=True
+            ).execute()
             
             # Catat Log
             log_data = {
                 'timestamp': datetime.now().isoformat(), 'user': user,
                 'method': "Manual Input", 'total_items': len(data_to_insert),
-                'items_detail': log_items # JSONB support
+                'items_detail': log_items
             }
             supabase.table('import_logs').insert(log_data).execute()
             clear_cache()
@@ -149,13 +155,16 @@ def import_stock_from_df(user, df):
     
     if data_to_insert:
         try:
-            # Batching per 1000 agar aman
             batch_size = 1000
             for i in range(0, len(data_to_insert), batch_size):
                 batch = data_to_insert[i:i + batch_size]
-                supabase.table('inventory').upsert(batch).execute()
+                # FIX V5.1: ignore_duplicates=True (Anti-Overwrite)
+                supabase.table('inventory').upsert(
+                    batch, 
+                    on_conflict="sn", 
+                    ignore_duplicates=True
+                ).execute()
             
-            # Log
             log_data = {
                 'timestamp': datetime.now().isoformat(), 'user': user,
                 'method': "Excel Import", 'total_items': len(data_to_insert),
@@ -171,28 +180,23 @@ def import_stock_from_df(user, df):
 def process_checkout(user, cart_items):
     total = sum(item['price'] for item in cart_items)
     sn_sold = [item['sn'] for item in cart_items]
-    trx_id = f"TRX-{int(time.time())}" # Simple ID generation
+    trx_id = f"TRX-{int(time.time())}"
     
     try:
-        # 1. Update Status Inventory (Bulk Update)
-        # Di Supabase harus update satu-satu atau pakai 'in' filter jika value sama. 
-        # Kita update status jadi 'Sold' untuk list SN ini.
         supabase.table('inventory').update({
             'status': 'Sold', 
             'sold_at': datetime.now().isoformat()
         }).in_('sn', sn_sold).execute()
         
-        # 2. Catat Transaksi
         trx_data = {
             'trx_id': trx_id,
             'timestamp': datetime.now().isoformat(),
             'user': user,
             'total_bill': total,
             'items_count': len(sn_sold),
-            'item_details': cart_items # JSONB Store
+            'item_details': cart_items
         }
         supabase.table('transactions').insert(trx_data).execute()
-        
         clear_cache()
         return trx_id, total
     except Exception as e:
@@ -208,8 +212,6 @@ def delete_stock(sn):
     clear_cache()
 
 def factory_reset(table_name):
-    # Hapus semua data (Dangerous)
-    # Supabase tidak ada 'delete all' tanpa where, jadi pakai not eq dummy
     supabase.table(table_name).delete().neq('sn' if table_name == 'inventory' else 'trx_id', 'dummy_val').execute()
     clear_cache()
 
@@ -220,7 +222,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.0 Supabase Engine", unsafe_allow_html=True)
+            st.caption("v5.1 Final Polish", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -233,7 +235,6 @@ def login_page():
 if not st.session_state.logged_in: login_page(); st.stop()
 
 # --- 7. SIDEBAR ---
-# Manual refresh button utk update cache
 with st.sidebar:
     st.markdown("### 📦 SN Tracker")
     st.markdown(f"User: **{st.session_state.user_role}**")
@@ -270,7 +271,6 @@ with st.sidebar:
 # === KASIR ===
 if menu == "🛒 Kasir":
     st.title("🛒 Kasir")
-    # Load data
     df_master = get_inventory_df()
     
     c_product, c_cart = st.columns([1.8, 1])
@@ -344,7 +344,6 @@ if menu == "🛒 Kasir":
 elif menu == "📦 Gudang":
     st.title("📦 Manajemen Gudang")
     df_master = get_inventory_df() # Load data
-    
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
     with tabs[0]:
@@ -379,7 +378,8 @@ elif menu == "📦 Gudang":
             st.subheader("Input Stok")
             mode = st.radio("Metode:", ["Manual", "Upload Excel"], horizontal=True)
             if mode == "Manual":
-                with st.form("in"):
+                # FIX V5.1: clear_on_submit=True
+                with st.form("in", clear_on_submit=True):
                     c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
                     sn = st.text_area("SN (Enter pemisah):")
                     if st.form_submit_button("SIMPAN", type="primary"):
@@ -439,6 +439,13 @@ elif menu == "🔧 Admin Tools":
 
         with tab2:
             st.info("Backup Data")
+            # Fitur download Excel sederhana
+            if not df_master.empty:
+                out_stok = io.BytesIO()
+                with pd.ExcelWriter(out_stok, engine='xlsxwriter') as writer:
+                    df_master.to_excel(writer, index=False, sheet_name='Stok')
+                st.download_button("Download Stok (.xlsx)", out_stok.getvalue(), "stok.xlsx", "application/vnd.ms-excel")
+
             if st.button("Hapus Semua Data (Danger Zone)"):
                 st.session_state.reset_mode = True
             
