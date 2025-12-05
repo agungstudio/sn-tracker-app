@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.1 Transaction Inspector)
+# APLIKASI: SN TRACKER PRO (V6.2 Fix Crash)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Fitur Cek Detail Transaksi (Lihat SKU/SN per Struk)
+# FIX: NameError 'avail' is not defined (Urutan kode diperbaiki)
 # ==========================================
 
 import streamlit as st
@@ -257,7 +257,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.1 Transaction Inspector", unsafe_allow_html=True)
+            st.caption("v6.2 Fix Crash", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -323,6 +323,11 @@ if menu == "🛒 Kasir":
                     rows = df_ready[df_ready['display'] == pilih_barang]
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
+                        
+                        # --- PERBAIKAN DI SINI ---
+                        # Hitung 'avail' DULU sebelum ditampilkan di f-string markdown
+                        sn_cart = [x['sn'] for x in st.session_state.keranjang]
+                        avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
                         st.markdown(f"""
                         <div class="product-card-container">
