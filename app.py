@@ -1,7 +1,9 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.3 Fix Error)
+# APLIKASI: SN TRACKER PRO (V5.4 Lite Admin)
 # ENGINE: Supabase (PostgreSQL)
-# FIX: Mengatasi NameError 'df_master' di menu Admin Tools
+# UPDATE: 
+# 1. Hapus Grafik (Lebih Ringan)
+# 2. Backup 1 File Excel isi 2 Sheet (Stok & History)
 # ==========================================
 
 import streamlit as st
@@ -10,7 +12,6 @@ from supabase import create_client, Client
 from datetime import datetime
 import time
 import io
-import plotly.express as px
 import re
 
 # --- 1. SETUP HALAMAN ---
@@ -93,14 +94,13 @@ def get_import_logs():
     response = supabase.table('import_logs').select("*").order('timestamp', desc=True).limit(20).execute()
     return response.data
 
-# --- WRITE DATA (SMART CHECK) ---
+# --- WRITE DATA ---
 
 def add_stock_batch(user, brand, sku, price, sn_list):
     clean_sn_list = []
     for sn in sn_list:
         clean_sn = sn.strip().upper() 
-        if clean_sn:
-            clean_sn_list.append(clean_sn)
+        if clean_sn: clean_sn_list.append(clean_sn)
             
     clean_sn_list = list(set(clean_sn_list))
     if not clean_sn_list: return 0, 0, []
@@ -203,7 +203,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.3 Fix Admin Tools", unsafe_allow_html=True)
+            st.caption("v5.4 Lite Admin", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -361,13 +361,13 @@ elif menu == "📦 Gudang":
             if mode == "Manual":
                 with st.form("in", clear_on_submit=True):
                     c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
-                    sn = st.text_area("List SN (Enter pemisah):", help="Sistem akan otomatis ubah ke Huruf Besar & Tolak Duplikat.")
+                    sn = st.text_area("List SN (Enter pemisah):", help="Sistem otomatis ubah ke Huruf Besar & Tolak Duplikat.")
                     if st.form_submit_button("SIMPAN", type="primary"):
                         if b and s and sn: 
                             added, dups, dup_list = add_stock_batch(st.session_state.user_role, b, s, p, sn.strip().split('\n'))
                             if added > 0: st.success(f"✅ Berhasil input {added} item baru.")
                             if dups > 0: 
-                                st.error(f"❌ Gagal {dups} item karena Duplikat (SN sudah ada).")
+                                st.error(f"❌ Gagal {dups} item karena Duplikat.")
                                 st.write("List Duplikat:", dup_list)
                             time.sleep(2); st.rerun()
             else:
@@ -409,10 +409,9 @@ elif menu == "📦 Gudang":
 elif menu == "🔧 Admin Tools":
     if st.session_state.user_role == "ADMIN":
         st.title("🔧 Admin Tools")
-        # FIX V5.3: Load Data di sini agar 'df_master' dikenal
-        df_master = get_inventory_df()
+        df_master = get_inventory_df() # Load Inventory
         
-        tab1, tab2 = st.tabs(["📊 Analitik", "💾 Backup & Reset"])
+        tab1, tab2 = st.tabs(["📊 Ringkasan", "💾 Database"])
         
         with tab1:
             df_hist = get_history_df()
@@ -421,19 +420,53 @@ elif menu == "🔧 Admin Tools":
                 df_hist['Tgl'] = df_hist['waktu'].dt.date
                 m1, m2 = st.columns(2)
                 m1.metric("Omzet", format_rp(df_hist['total_bill'].sum()))
-                m2.metric("Trx", len(df_hist))
-                fig = px.line(df_hist.groupby('Tgl')['total_bill'].sum().reset_index(), x='Tgl', y='total_bill', title="Tren Harian")
-                st.plotly_chart(fig, use_container_width=True)
+                m2.metric("Transaksi", len(df_hist))
+                st.dataframe(df_hist[['trx_id', 'timestamp', 'user', 'total_bill']], use_container_width=True)
             else: st.info("Belum ada transaksi")
 
         with tab2:
-            st.info("Backup Data")
-            if not df_master.empty:
-                out_stok = io.BytesIO()
-                with pd.ExcelWriter(out_stok, engine='xlsxwriter') as writer:
-                    df_master.to_excel(writer, index=False, sheet_name='Stok')
-                st.download_button("Download Stok (.xlsx)", out_stok.getvalue(), "stok.xlsx", "application/vnd.ms-excel")
+            st.info("Download Backup & Maintenance")
+            
+            # --- FITUR BACKUP 1 FILE 2 SHEET ---
+            if st.button("📥 DOWNLOAD FULL DATABASE (.xlsx)"):
+                if not df_master.empty or not df_hist.empty:
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        # Sheet 1: Stok
+                        if not df_master.empty:
+                            df_stok_clean = df_master.copy()
+                            # Convert timezone to string to avoid Excel error
+                            for col in df_stok_clean.columns:
+                                if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
+                                    df_stok_clean[col] = df_stok_clean[col].astype(str)
+                            df_stok_clean.to_excel(writer, sheet_name='Stok Gudang', index=False)
+                        
+                        # Sheet 2: Transaksi
+                        if not df_hist.empty:
+                            df_hist_clean = df_hist.copy()
+                            # Convert timezone to string
+                            if 'timestamp' in df_hist_clean.columns:
+                                df_hist_clean['waktu_lokal'] = pd.to_datetime(df_hist_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
+                            else:
+                                df_hist_clean['waktu_lokal'] = "-"
+                            
+                            cols_target = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
+                            # Ensure columns exist
+                            for c in cols_target:
+                                if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
+                                
+                            df_hist_clean[cols_target].to_excel(writer, sheet_name='Riwayat Transaksi', index=False)
+                            
+                    st.download_button(
+                        label="Klik disini untuk Simpan File",
+                        data=buffer.getvalue(),
+                        file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.ms-excel"
+                    )
+                else:
+                    st.warning("Data masih kosong.")
 
+            st.markdown("---")
             if st.button("Hapus Semua Data (Danger Zone)"):
                 st.session_state.reset_mode = True
             
