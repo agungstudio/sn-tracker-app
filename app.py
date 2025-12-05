@@ -1,8 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.5 Clean Alert)
+# APLIKASI: SN TRACKER PRO (V6.6 Clean Alert)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Detail stok menipis dipindah dari Sidebar
-# ke Dashboard Gudang agar lebih lega & rapi.
+# UPDATE: Versi 6.6 tanpa emoji segitiga merah.
+# Detail stok menipis ada di Dashboard Gudang.
 # ==========================================
 
 import streamlit as st
@@ -109,7 +109,6 @@ st.markdown("""
     .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
     div[data-testid="stExpander"] { border: 1px solid var(--border-color); background-color: var(--card-bg); border-radius: 8px; }
     
-    /* ALERT STOCK DI SIDEBAR */
     .sidebar-alert {
         background-color: rgba(255, 75, 75, 0.1); 
         border: 1px solid #ff4b4b; 
@@ -257,7 +256,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.5 Clean Alert UI", unsafe_allow_html=True)
+            st.caption("v6.6 Clean Alert", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -270,8 +269,6 @@ def login_page():
 if not st.session_state.logged_in: login_page(); st.stop()
 
 # --- 7. SIDEBAR ---
-df_master = get_inventory_df()
-
 with st.sidebar:
     st.markdown("### 📦 SN Tracker")
     st.markdown(f"User: **{st.session_state.user_role}**")
@@ -284,21 +281,6 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
         
-    # ALERT RINGKAS DI SIDEBAR (Tanpa Detail)
-    if not df_master.empty:
-        df_ready = df_master[df_master['status'] == 'Ready']
-        if not df_ready.empty:
-            stok_rekap = df_ready.groupby(['brand', 'sku']).size().reset_index(name='jumlah')
-            stok_tipis = stok_rekap[stok_rekap['jumlah'] < 5]
-            
-            if not stok_tipis.empty:
-                st.markdown(f"""
-                <div class="sidebar-alert">
-                    ⚠️ <b>{len(stok_tipis)} Barang Menipis!</b><br>
-                    <span style="font-size:12px; opacity:0.8">Cek detail di menu Gudang</span>
-                </div>
-                """, unsafe_allow_html=True)
-
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
     
@@ -323,6 +305,7 @@ with st.sidebar:
 # === KASIR ===
 if menu == "🛒 Kasir":
     st.title("🛒 Kasir")
+    df_master = get_inventory_df()
     
     c_product, c_cart = st.columns([1.8, 1])
     with c_product:
@@ -340,7 +323,6 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
-                        # Calculate avail first
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
@@ -408,7 +390,7 @@ if menu == "🛒 Kasir":
 # === GUDANG ===
 elif menu == "📦 Gudang":
     st.title("📦 Manajemen Gudang")
-    # df_master sudah diload di global, jadi aman
+    df_master = get_inventory_df() # Load data
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
     # TAB 1: DASHBOARD
@@ -420,19 +402,22 @@ elif menu == "📦 Gudang":
                 stok_rekap = df_ready.groupby(['brand', 'sku', 'price']).size().reset_index(name='Total Stok')
                 stok_rekap = stok_rekap.sort_values(by=['brand', 'sku'])
                 
-                # --- AREA PERINGATAN STOK MENIPIS (BARU) ---
+                # --- AREA PERINGATAN STOK MENIPIS (TANPA EMOJI SEGITIGA) ---
                 stok_tipis = stok_rekap[stok_rekap['Total Stok'] < 5]
                 if not stok_tipis.empty:
                     st.error(f"⚠️ PERHATIAN: {len(stok_tipis)} Barang Stoknya Menipis (< 5 unit)")
-                    st.dataframe(
-                        stok_tipis, 
-                        use_container_width=True,
-                        column_config={
-                            "price": st.column_config.NumberColumn("Harga", format="Rp %d"),
-                            "Total Stok": st.column_config.ProgressColumn("Sisa Stok", format="%d", min_value=0, max_value=5, help="Segera restock!")
-                        },
-                        hide_index=True
-                    )
+                    
+                    # FIX: Menghapus emoji merah segitiga
+                    with st.expander("Klik untuk Lihat Detail Barang Menipis", expanded=False):
+                        st.dataframe(
+                            stok_tipis, 
+                            use_container_width=True,
+                            column_config={
+                                "price": st.column_config.NumberColumn("Harga", format="Rp %d"),
+                                "Total Stok": st.column_config.ProgressColumn("Sisa Stok", format="%d", min_value=0, max_value=5, help="Segera restock!")
+                            },
+                            hide_index=True
+                        )
                     st.markdown("---")
                 # ---------------------------------------------
 
