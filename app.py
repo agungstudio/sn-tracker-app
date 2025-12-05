@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V4.4 Sidebar Polish)
+# APLIKASI: SN TRACKER PRO (V4.5 Logout Confirm)
 # ENGINE: Google Firestore
-# UPDATE: Tombol Logout Full Width & Posisi Ergonomis
+# UPDATE: Tombol Logout Pakai Konfirmasi (Anti-Kepencet)
 # ==========================================
 
 import streamlit as st
@@ -48,6 +48,7 @@ if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_role' not in st.session_state: st.session_state.user_role = ""
 if 'keranjang' not in st.session_state: st.session_state.keranjang = []
 if 'search_key' not in st.session_state: st.session_state.search_key = 0 
+if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = False
 
 # --- 4. CSS CUSTOMIZATION ---
 st.markdown("""
@@ -189,7 +190,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v4.4 Stable", unsafe_allow_html=True)
+            st.caption("v4.5 Logout Confirmation", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -207,28 +208,36 @@ with st.sidebar:
     st.markdown("### 📦 SN Tracker")
     st.markdown(f"User: **{st.session_state.user_role}**")
     
-    # Navigasi
     menu_items = ["🛒 Kasir", "📦 Gudang", "🔧 Admin Tools"] if st.session_state.user_role == "ADMIN" else ["🛒 Kasir", "📦 Gudang"]
     menu = st.radio("Menu Utama", menu_items, label_visibility="collapsed")
     
     st.divider()
     
-    # Alert Stok
     if not df_master.empty:
         stok_ready = df_master[df_master['status'] == 'Ready']
         stok_count = stok_ready.groupby(['brand', 'sku']).size().reset_index(name='jumlah')
         stok_tipis = stok_count[stok_count['jumlah'] < 5]
         if not stok_tipis.empty: st.markdown(f"<div class='alert-stock'>🔔 {len(stok_tipis)} Item Stok Menipis</div>", unsafe_allow_html=True)
     
-    # SPACER AGAR LOGOUT DI BAWAH (Visual Trick)
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
     
-    # TOMBOL LOGOUT FULL WIDTH
-    if st.button("🚪 KELUAR APLIKASI", use_container_width=True): 
-        st.session_state.logged_in = False
-        st.session_state.keranjang = []
-        st.rerun()
+    # --- LOGOUT DENGAN KONFIRMASI ---
+    if st.session_state.confirm_logout:
+        st.warning("Yakin ingin keluar?")
+        c_yes, c_no = st.columns(2)
+        if c_yes.button("✅ YA", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.keranjang = []
+            st.session_state.confirm_logout = False
+            st.rerun()
+        if c_no.button("❌ BATAL", use_container_width=True):
+            st.session_state.confirm_logout = False
+            st.rerun()
+    else:
+        if st.button("🚪 KELUAR APLIKASI", use_container_width=True): 
+            st.session_state.confirm_logout = True
+            st.rerun()
 
 # --- 8. KONTEN UTAMA ---
 
