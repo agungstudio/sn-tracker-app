@@ -1,8 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V3.5 Natural Sort)
+# APLIKASI: SN TRACKER PRO (V3.6 Copy Feature)
 # ENGINE: Google Firestore
-# LAYOUT: Classic Clean (Reverted)
-# UPDATE: Perbaikan Urutan SN (Natural Sorting 1, 2.. 9, 10)
+# FITUR UTAMA: One-Click Copy SN untuk Kasir
 # ==========================================
 
 import streamlit as st
@@ -13,7 +12,7 @@ from datetime import datetime, timedelta
 import time
 import io
 import plotly.express as px
-import re # Library wajib untuk Natural Sorting
+import re
 
 # --- 1. SETUP HALAMAN ---
 st.set_page_config(
@@ -58,7 +57,6 @@ st.markdown("""
         --brand-yellow: #F99D1C;
     }
     
-    /* Tombol Primary */
     div.stButton > button[kind="primary"] {
         background-color: var(--brand-blue); border: none; color: white; font-weight: bold;
         padding: 8px 16px; border-radius: 6px;
@@ -66,21 +64,15 @@ st.markdown("""
     div.stButton > button[kind="primary"]:hover {
         background-color: #007bb5;
     }
-    
-    /* Tampilan Harga Besar */
     .big-price { 
         font-size: 28px; font-weight: 800; color: var(--brand-yellow); 
         margin-bottom: 5px; display: block; 
     }
-    
-    /* Step Header (Bar Biru Simpel) */
     .step-header { 
         background-color: var(--brand-blue); color: white; padding: 8px 15px; 
         border-radius: 6px; margin-bottom: 15px; font-weight: bold; 
     }
-
     .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
-    
     .alert-stock {
         background-color: rgba(255, 0, 0, 0.1); color: #e53935; padding: 10px; 
         border-radius: 5px; border: 1px solid #ef9a9a; margin-bottom: 10px; font-weight: bold; font-size: 14px;
@@ -94,10 +86,6 @@ st.markdown("""
 # --- 5. FUNGSI LOGIC DATABASE & UTILS ---
 
 def natural_sort_key(s):
-    """
-    Fungsi Ajaib untuk mengurutkan string + angka secara manusiawi.
-    SN1, SN2, ... SN9, SN10 (Bukan SN1, SN10, SN2)
-    """
     return [int(text) if text.isdigit() else text.lower()
             for text in re.split('([0-9]+)', s)]
 
@@ -198,7 +186,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("v3.5 Natural Sort Update", unsafe_allow_html=True)
+            st.caption("v3.6 Quick Copy Update", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -232,7 +220,6 @@ with st.sidebar:
 if menu == "🛒 Transaksi":
     st.title("🛒 Kasir Point of Sales")
     
-    # KEMBALI KE LAYOUT KLASIK (Tanpa Card Putih Tebal)
     c_product, c_cart = st.columns([1.8, 1])
     
     with c_product:
@@ -255,11 +242,9 @@ if menu == "🛒 Transaksi":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
-                        # Tampilan Detail Simpel (Tanpa Card HTML)
                         st.markdown(f"<span class='big-price'>{format_rp(item['price'])}</span>", unsafe_allow_html=True)
                         st.caption(f"Brand: {item['brand']} | SKU: {sku}")
                         
-                        # Logika Filter Stok
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
@@ -268,36 +253,25 @@ if menu == "🛒 Transaksi":
                         col_sn, col_add = st.columns([2, 1])
                         
                         with col_sn:
-                            # --- PERBAIKAN UTAMA: NATURAL SORTING ---
-                            # Menggunakan key=natural_sort_key agar SN1, SN2 ... SN10 urut benar
+                            # Natural Sorting
                             sn_list_sorted = sorted(avail['sn'].tolist(), key=natural_sort_key)
-                            
-                            p_sn = st.multiselect(
-                                "Pilih Serial Number (SN):", 
-                                sn_list_sorted, 
-                                placeholder="Pilih SN..."
-                            )
+                            p_sn = st.multiselect("Pilih Serial Number (SN):", sn_list_sorted, placeholder="Pilih SN...")
                             st.write(f"Stok: **{len(avail)}** Unit")
                         
                         with col_add:
-                            st.write("") # Spacer
+                            st.write("") 
                             st.write("") 
                             if st.button("TAMBAH ➕", type="primary", use_container_width=True):
                                 if p_sn:
                                     for s in p_sn: st.session_state.keranjang.append(avail[avail['sn']==s].iloc[0].to_dict())
                                     st.session_state.search_key += 1; st.toast("Masuk Keranjang!", icon="🛒"); time.sleep(0.1); st.rerun()
-                                else:
-                                    st.warning("Pilih SN dulu")
-                    else:
-                        st.warning("Barang tidak ditemukan.")
-            else:
-                st.warning("Stok Gudang Kosong (Semua Sold/Tidak ada data).")
-        else:
-            st.warning("Database Kosong.")
+                                else: st.warning("Pilih SN dulu")
+                    else: st.warning("Barang tidak ditemukan.")
+            else: st.warning("Stok Gudang Kosong.")
+        else: st.warning("Database Kosong.")
 
     with c_cart:
         st.markdown('<div class="step-header">2️⃣ Keranjang</div>', unsafe_allow_html=True)
-        # Kembali ke Tampilan Tabel Biasa (Bukan Receipt Card)
         with st.container(border=True):
             if st.session_state.keranjang:
                 tot = 0
@@ -308,18 +282,37 @@ if menu == "🛒 Transaksi":
                     c2.markdown(f"<div style='text-align:right'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
                     st.divider()
                 
+                # FITUR BARU: COPY SN OTOMATIS
+                st.info("📋 **Copy SN (Paste ke POS Toko):**")
+                sn_string = "\n".join([item['sn'] for item in st.session_state.keranjang])
+                st.code(sn_string, language="text") # Blok ini punya tombol copy bawaan
+
                 st.markdown(f"<div style='text-align:right'>Total Tagihan<br><span class='big-price'>{format_rp(tot)}</span></div>", unsafe_allow_html=True)
                 
                 if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
-                    st.session_state.keranjang = []; st.balloons(); st.success("Transaksi Sukses!")
-                    with st.expander("📄 Struk Digital", expanded=True):
-                        st.code(f"ID: {tid}\nTotal: {format_rp(tbil)}")
-                
+                    
+                    # Simpan data sementara untuk ditampilkan setelah reload
+                    st.session_state.last_trx = {'id': tid, 'total': tbil, 'sn': sn_string}
+                    st.session_state.keranjang = []
+                    st.rerun()
+
                 if st.button("❌ Batal", use_container_width=True):
                     st.session_state.keranjang = []; st.rerun()
             else:
-                st.info("Keranjang Kosong")
+                # Cek jika baru saja transaksi sukses
+                if 'last_trx' in st.session_state and st.session_state.last_trx:
+                    st.success("✅ Transaksi Berhasil!")
+                    st.markdown(f"**ID:** {st.session_state.last_trx['id']}")
+                    st.markdown(f"**Total:** {format_rp(st.session_state.last_trx['total'])}")
+                    st.markdown("📋 **Copy SN Terjual:**")
+                    st.code(st.session_state.last_trx['sn'], language="text")
+                    
+                    if st.button("Transaksi Baru"):
+                        del st.session_state.last_trx
+                        st.rerun()
+                else:
+                    st.info("Keranjang Kosong")
 
 # === GUDANG ===
 elif menu == "📦 Gudang":
