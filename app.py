@@ -1,7 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V2.0 Hybrid)
+# APLIKASI: SN TRACKER PRO (V2.1 Import Update)
 # ENGINE: Google Firestore (Aman)
-# UI/UX: Blibli Gold Style (Keren)
+# UI/UX: Blibli Gold Style
+# FITUR BARU: Import Excel/CSV Otomatis
 # ==========================================
 
 import streamlit as st
@@ -112,6 +113,7 @@ def get_history_df():
     return pd.DataFrame(data)
 
 def add_stock_batch(brand, sku, price, sn_list):
+    """Tambah stok manual (batch kecil)"""
     batch = db.batch()
     count = 0
     for sn in sn_list:
@@ -125,6 +127,62 @@ def add_stock_batch(brand, sku, price, sn_list):
             count += 1
     batch.commit()
     return count
+
+def import_stock_from_df(df):
+    """Import stok massal dari Excel/CSV (Batch besar)"""
+    # Standardisasi nama kolom jadi huruf kecil
+    df.columns = [c.lower().strip() for c in df.columns]
+    
+    # Cek kolom wajib
+    required_cols = ['brand', 'sku', 'price', 'sn']
+    missing = [c for c in required_cols if c not in df.columns]
+    
+    if missing:
+        return False, f"Format Salah! Kolom berikut tidak ada: {', '.join(missing)}"
+    
+    batch = db.batch()
+    count = 0
+    total_imported = 0
+    
+    # Progress Bar
+    progress_bar = st.progress(0)
+    total_rows = len(df)
+    
+    for index, row in df.iterrows():
+        # Pastikan SN menjadi string dan tidak kosong
+        sn_val = str(row['sn']).strip()
+        if not sn_val or sn_val.lower() == 'nan':
+            continue
+            
+        doc_ref = db.collection('inventory').document(sn_val)
+        batch.set(doc_ref, {
+            'brand': str(row['brand']),
+            'sku': str(row['sku']),
+            'price': int(row['price']),
+            'sn': sn_val,
+            'status': 'Ready',
+            'created_at': datetime.now()
+        })
+        count += 1
+        
+        # Firestore batch limit 500 ops. Kita commit setiap 400 biar aman.
+        if count >= 400:
+            batch.commit()
+            batch = db.batch() # Bikin batch baru
+            total_imported += count
+            count = 0
+            progress_bar.progress(min(index / total_rows, 1.0))
+            
+    # Commit sisa batch terakhir
+    if count > 0:
+        batch.commit()
+        total_imported += count
+        
+    progress_bar.progress(1.0)
+    time.sleep(0.5)
+    progress_bar.empty()
+    
+    return True, f"Berhasil mengimport {total_imported} Data Stok!"
 
 def update_stock_price(sn, new_price):
     db.collection('inventory').document(sn).update({'price': int(new_price)})
@@ -165,7 +223,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align: center; margin-bottom:0;'><span style='color: #0095DA;'>BLIBLI</span> <span style='color: #F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("Secure Cloud System v2.0", unsafe_allow_html=True)
+            st.caption("Secure Cloud System v2.1", unsafe_allow_html=True)
             st.markdown("---")
             with st.form("lgn"):
                 u = st.text_input("Username")
@@ -327,21 +385,61 @@ elif menu == "📦 GUDANG":
     with tab2:
         if st.session_state.user_role == "ADMIN":
             st.subheader("Input Stok Baru")
-            with st.form("input_new"):
-                c1, c2 = st.columns(2)
-                ibrand = c1.text_input("Brand")
-                isku = c2.text_input("Nama Produk (SKU)")
-                iprice = st.number_input("Harga Jual", min_value=0, step=5000)
-                isn_text = st.text_area("Scan SN (Pisahkan dengan Enter):", height=100)
+            
+            # Pilihan Mode
+            mode_input = st.radio("Metode Input:", ["📝 Manual / Scan", "📂 Upload Excel/CSV (Otomatis)"], horizontal=True)
+            st.divider()
+            
+            if mode_input == "📝 Manual / Scan":
+                with st.form("input_new"):
+                    c1, c2 = st.columns(2)
+                    ibrand = c1.text_input("Brand")
+                    isku = c2.text_input("Nama Produk (SKU)")
+                    iprice = st.number_input("Harga Jual", min_value=0, step=5000)
+                    isn_text = st.text_area("Scan SN (Pisahkan dengan Enter):", height=100)
+                    
+                    if st.form_submit_button("SIMPAN KE DATABASE", type="primary"):
+                        if ibrand and isku and isn_text:
+                            sn_list = isn_text.strip().split('\n')
+                            cnt = add_stock_batch(ibrand, isku, iprice, sn_list)
+                            st.success(f"Berhasil input {cnt} unit!")
+                            time.sleep(1)
+                            st.rerun()
+                        else: st.warning("Data belum lengkap!")
+            
+            else: # Mode Upload
+                st.info("Format File wajib memiliki Header kolom: **Brand, SKU, Price, SN**")
                 
-                if st.form_submit_button("SIMPAN KE DATABASE", type="primary"):
-                    if ibrand and isku and isn_text:
-                        sn_list = isn_text.strip().split('\n')
-                        cnt = add_stock_batch(ibrand, isku, iprice, sn_list)
-                        st.success(f"Berhasil input {cnt} unit!")
-                        time.sleep(1)
-                        st.rerun()
-                    else: st.warning("Data belum lengkap!")
+                # Template Download
+                dummy_data = pd.DataFrame([{'Brand':'Samsung', 'SKU':'Galaxy A55', 'Price':6000000, 'SN':'SN001'}])
+                csv_buffer = dummy_data.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download Contoh Template CSV", data=csv_buffer, file_name="template_stok.csv", mime="text/csv")
+                
+                uploaded_file = st.file_uploader("Upload File Anda (Excel/CSV)", type=['xlsx', 'csv'])
+                
+                if uploaded_file is not None:
+                    try:
+                        if uploaded_file.name.endswith('.csv'):
+                            df_upload = pd.read_csv(uploaded_file)
+                        else:
+                            df_upload = pd.read_excel(uploaded_file)
+                        
+                        st.write("Preview Data:")
+                        st.dataframe(df_upload.head(), use_container_width=True)
+                        
+                        if st.button("🚀 MULAI IMPORT DATA", type="primary"):
+                            with st.spinner("Sedang mengupload ke Database Cloud..."):
+                                success, msg = import_stock_from_df(df_upload)
+                                if success:
+                                    st.balloons()
+                                    st.success(msg)
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
+                    except Exception as e:
+                        st.error(f"Error membaca file: {e}")
+
         else: st.warning("Akses Input hanya untuk Admin.")
 
     with tab3:
