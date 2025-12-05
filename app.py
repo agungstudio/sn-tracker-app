@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V3.7 Copy per Item)
+# APLIKASI: SN TRACKER PRO (V3.8 Stable)
 # ENGINE: Google Firestore
-# FITUR UTAMA: Tombol Copy SN per Item di Keranjang
+# FIX: Error Excel Backup (Timezone Issue Solved)
 # ==========================================
 
 import streamlit as st
@@ -72,7 +72,6 @@ st.markdown("""
         background-color: var(--brand-blue); color: white; padding: 8px 15px; 
         border-radius: 6px; margin-bottom: 15px; font-weight: bold; 
     }
-    /* Mengatur agar st.code tidak terlalu boros tempat di keranjang */
     div[data-testid="stVerticalBlock"] .stCode {
         margin-bottom: 0px !important;
     }
@@ -189,7 +188,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("v3.7 Copy per Item", unsafe_allow_html=True)
+            st.caption("v3.8 Stable", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -256,7 +255,6 @@ if menu == "🛒 Transaksi":
                         col_sn, col_add = st.columns([2, 1])
                         
                         with col_sn:
-                            # Natural Sorting
                             sn_list_sorted = sorted(avail['sn'].tolist(), key=natural_sort_key)
                             p_sn = st.multiselect("Pilih Serial Number (SN):", sn_list_sorted, placeholder="Pilih SN...")
                             st.write(f"Stok: **{len(avail)}** Unit")
@@ -281,18 +279,12 @@ if menu == "🛒 Transaksi":
                 st.caption("Klik tombol kecil di kanan SN untuk Copy.")
                 for i, x in enumerate(st.session_state.keranjang):
                     tot += x['price']
-                    
-                    # Layout Item
-                    st.markdown(f"**{x['sku']}**") # Nama Barang
-                    
-                    # Grid: Kiri untuk SN (Code block), Kanan untuk Harga
+                    st.markdown(f"**{x['sku']}**")
                     c_sn_code, c_price = st.columns([2.5, 1]) 
                     with c_sn_code:
-                        # Ini yang membuat tombol Copy muncul per item
                         st.code(x['sn'], language="text") 
                     with c_price:
                          st.markdown(f"<div style='text-align:right; margin-top: 5px; font-weight:bold;'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
-                    
                     st.divider()
 
                 st.markdown(f"<div style='text-align:right'>Total Tagihan<br><span class='big-price'>{format_rp(tot)}</span></div>", unsafe_allow_html=True)
@@ -300,13 +292,12 @@ if menu == "🛒 Transaksi":
                 if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
                     st.session_state.keranjang = []; st.balloons(); st.success("Transaksi Sukses!")
-                    st.session_state.last_trx = {'id': tid, 'total': tbil} # Simpan state
+                    st.session_state.last_trx = {'id': tid, 'total': tbil}
                     st.rerun()
 
                 if st.button("❌ Batal", use_container_width=True):
                     st.session_state.keranjang = []; st.rerun()
             else:
-                # Menampilkan struk terakhir jika ada
                 if 'last_trx' in st.session_state and st.session_state.last_trx:
                     st.success("✅ Transaksi Berhasil!")
                     st.write(f"ID: {st.session_state.last_trx['id']}")
@@ -397,16 +388,29 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
             with c_back:
                 st.markdown("### 1. Backup Data (Excel)")
                 st.caption("Download data sebelum melakukan reset!")
+                
+                # --- FIX: DOWNLOAD STOK (CLEAN DATETIME) ---
                 if not df_master.empty:
                     out_stok = io.BytesIO()
+                    # Buat copy agar tidak merusak dataframe asli
+                    df_down_stok = df_master.copy()
+                    # Convert kolom datetime/timezone jadi string
+                    for col in df_down_stok.columns:
+                        if pd.api.types.is_datetime64_any_dtype(df_down_stok[col]):
+                            df_down_stok[col] = df_down_stok[col].astype(str)
+                            
                     with pd.ExcelWriter(out_stok, engine='xlsxwriter') as writer:
-                        df_master.to_excel(writer, index=False, sheet_name='Stok_Gudang')
+                        df_down_stok.to_excel(writer, index=False, sheet_name='Stok_Gudang')
                     st.download_button("📥 Download Master Stok (.xlsx)", out_stok.getvalue(), "Backup_Stok.xlsx", "application/vnd.ms-excel", use_container_width=True)
                 
+                # --- FIX: DOWNLOAD HISTORY (CLEAN DATETIME) ---
                 df_hist_all = get_history_df()
                 if not df_hist_all.empty:
                     df_clean = df_hist_all.copy()
                     df_clean['waktu_lokal'] = pd.to_datetime(df_clean['timestamp']).dt.tz_convert('Asia/Jakarta')
+                    # Convert waktu_lokal jadi string agar Excel tidak error timezone
+                    df_clean['waktu_lokal'] = df_clean['waktu_lokal'].astype(str)
+                    
                     cols_to_save = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
                     out_hist = io.BytesIO()
                     with pd.ExcelWriter(out_hist, engine='xlsxwriter') as writer:
