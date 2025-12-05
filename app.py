@@ -1,9 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.5 Beautiful UI)
+# APLIKASI: SN TRACKER PRO (V5.6 Full UI Polish)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: 
-# 1. Tampilan Kasir "Product Card" yang Modern
-# 2. Tampilan Admin Tools yang Rapi & Profesional
+# UPDATE: Tampilan Gudang (Dashboard, Input, Edit) dipercantik
+# agar setara dengan menu Kasir & Admin.
 # ==========================================
 
 import streamlit as st
@@ -43,7 +42,7 @@ if 'keranjang' not in st.session_state: st.session_state.keranjang = []
 if 'search_key' not in st.session_state: st.session_state.search_key = 0 
 if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = False
 
-# --- 4. CSS CUSTOMIZATION (NEW & IMPROVED) ---
+# --- 4. CSS CUSTOMIZATION (FULL THEME) ---
 st.markdown("""
     <style>
     /* VARIAN WARNA */
@@ -82,7 +81,7 @@ st.markdown("""
         color: white;
     }
 
-    /* CARD PRODUK KASIR (KOTAK HASIL CARI) */
+    /* CARD PRODUK KASIR */
     .product-card-container {
         background-color: var(--bg-card);
         padding: 25px;
@@ -123,28 +122,51 @@ st.markdown("""
         letter-spacing: -1px;
     }
 
-    /* ADMIN TOOLS CARDS */
-    .admin-card-blue {
+    /* GENERAL CARDS (Gudang & Admin) */
+    .info-card {
         padding: 20px;
-        background-color: #f0f9ff;
-        border: 1px solid #b9e6fe;
-        border-radius: 10px;
-        margin-bottom: 15px;
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
     }
-    .admin-card-red {
-        padding: 20px;
-        background-color: #fef2f2;
-        border: 1px solid #fecaca;
-        border-radius: 10px;
-        margin-bottom: 15px;
-    }
-    .admin-header {
+    .info-header {
         font-weight: 700;
-        font-size: 18px;
+        font-size: 16px;
+        color: var(--brand-blue);
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+    }
+
+    /* METRIC BOX (Dashboard Gudang) */
+    .metric-box {
+        background: linear-gradient(135deg, #f6f9fc 0%, #eef2f5 100%);
+        padding: 20px;
+        border-radius: 12px;
+        border-left: 4px solid var(--brand-blue);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    .metric-label { font-size: 14px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-value { font-size: 28px; font-weight: 800; color: #333; margin-top: 5px; }
+
+    /* DANGER ZONE CARD */
+    .danger-card {
+        padding: 20px;
+        background-color: #fff5f5;
+        border: 1px solid #fed7d7;
+        border-radius: 12px;
+        margin-bottom: 15px;
+    }
+    .danger-header {
+        color: #c53030;
+        font-weight: 700;
         margin-bottom: 10px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
     }
     
     /* MODIFIKASI BAWAAN STREAMLIT */
@@ -294,7 +316,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.5 Beautiful UI", unsafe_allow_html=True)
+            st.caption("v5.6 Beautiful UI", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -347,7 +369,7 @@ if menu == "🛒 Kasir":
     
     c_product, c_cart = st.columns([1.8, 1])
     with c_product:
-        # Search Box dengan Styling Bawaan Streamlit yang Bersih
+        # Search Box Clean
         st.info("💡 Ketik Nama Barang / Scan Barcode")
         
         if not df_master.empty:
@@ -362,7 +384,7 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
-                        # TAMPILAN BARU: PRODUCT CARD (HTML/CSS)
+                        # CARD PRODUK
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
@@ -427,37 +449,60 @@ elif menu == "📦 Gudang":
     df_master = get_inventory_df() # Load data
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
+    # TAB 1: DASHBOARD
     with tabs[0]:
-        st.subheader("Ringkasan Stok Gudang")
+        st.subheader("Ringkasan Stok")
         if not df_master.empty:
             df_ready = df_master[df_master['status'] == 'Ready']
             if not df_ready.empty:
                 stok_rekap = df_ready.groupby(['brand', 'sku', 'price']).size().reset_index(name='Total Stok')
                 stok_rekap = stok_rekap.sort_values(by=['brand', 'sku'])
+                
+                # Metric Cards UI
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Total Unit", f"{len(df_ready)}")
-                c2.metric("Nilai Aset", format_rp(df_ready['price'].sum()))
-                c3.metric("Jenis Produk", f"{len(stok_rekap)}")
+                with c1:
+                    st.markdown(f"""<div class="metric-box"><div class="metric-label">TOTAL UNIT</div><div class="metric-value">{len(df_ready)}</div></div>""", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""<div class="metric-box"><div class="metric-label">NILAI ASET</div><div class="metric-value">{format_rp(df_ready['price'].sum())}</div></div>""", unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""<div class="metric-box"><div class="metric-label">JENIS PRODUK</div><div class="metric-value">{len(stok_rekap)}</div></div>""", unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Styled Table
                 max_stok = int(stok_rekap['Total Stok'].max())
-                st.dataframe(stok_rekap, use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d"), "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)}, hide_index=True)
+                st.dataframe(
+                    stok_rekap, 
+                    use_container_width=True, 
+                    column_config={
+                        "price": st.column_config.NumberColumn("Harga", format="Rp %d"), 
+                        "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)
+                    }, 
+                    hide_index=True
+                )
             else: st.info("Gudang Kosong.")
         else: st.info("Database Kosong.")
 
+    # TAB 2: DETAIL SN
     with tabs[1]:
-        st.subheader("Detail SN")
+        st.markdown('<div class="info-card"><div class="info-header">🔍 Pencarian Detail SN</div>', unsafe_allow_html=True)
         if not df_master.empty:
-            sc, sf = st.columns(2)
-            q = sc.text_input("Cari SN/SKU:")
-            fb = sf.selectbox("Brand", ["All"] + sorted(df_master['brand'].unique().tolist()))
+            c_s1, c_s2 = st.columns(2)
+            with c_s1: q = st.text_input("Cari SN/SKU:", placeholder="Ketik nomor SN...")
+            with c_s2: fb = st.selectbox("Brand", ["All"] + sorted(df_master['brand'].unique().tolist()))
             dv = df_master.copy()
             if q: dv = dv[dv['sku'].str.contains(q, case=False) | dv['sn'].str.contains(q, case=False)]
             if fb != "All": dv = dv[dv['brand'] == fb]
             st.dataframe(dv[['sn','sku','brand','price','status']], use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
+    # TAB 3: INPUT BARANG
     with tabs[2]:
         if st.session_state.user_role == "ADMIN":
-            st.subheader("Input Stok")
+            st.markdown('<div class="info-card"><div class="info-header">➕ Input Stok Baru</div>', unsafe_allow_html=True)
             mode = st.radio("Metode:", ["Manual", "Upload Excel"], horizontal=True)
+            st.divider()
+            
             if mode == "Manual":
                 with st.form("in", clear_on_submit=True):
                     c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
@@ -479,6 +524,7 @@ elif menu == "📦 Gudang":
                         st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}")
                         time.sleep(2); st.rerun()
                     else: st.error(added)
+            st.markdown('</div>', unsafe_allow_html=True)
         else: st.warning("Khusus Admin")
 
     with tabs[3]:
@@ -494,7 +540,7 @@ elif menu == "📦 Gudang":
 
     with tabs[4]:
         if st.session_state.user_role == "ADMIN":
-            st.subheader("Edit Data")
+            st.markdown('<div class="danger-card"><div class="danger-header">⚠️ Edit & Hapus Data</div>', unsafe_allow_html=True)
             if st.text_input("PIN Admin:", type="password") == "123456":
                 src = st.text_input("Cari SN Edit:")
                 if src and not df_master.empty:
@@ -504,13 +550,13 @@ elif menu == "📦 Gudang":
                             np = st.number_input("Harga", value=int(r['price']), key=f"p{r['sn']}")
                             if st.button("Update", key=f"u{r['sn']}"): update_stock_price(r['sn'], np); st.rerun()
                             if st.button("Hapus", key=f"d{r['sn']}", type="primary"): delete_stock(r['sn']); st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # === ADMIN TOOLS ===
 elif menu == "🔧 Admin Tools":
     if st.session_state.user_role == "ADMIN":
         st.title("🔧 Admin Tools")
-        df_master = get_inventory_df() # Load Inventory
-        
+        df_master = get_inventory_df() 
         tab1, tab2 = st.tabs(["📊 Ringkasan", "💾 Database"])
         
         with tab1:
@@ -523,9 +569,7 @@ elif menu == "🔧 Admin Tools":
             else: st.info("Belum ada transaksi")
 
         with tab2:
-            # TAMPILAN ADMIN CARD YANG BARU
-            st.markdown('<div class="admin-card-blue"><div class="admin-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
-            
+            st.markdown('<div class="info-card"><div class="info-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
             if st.button("DOWNLOAD DATABASE LENGKAP (.xlsx)", use_container_width=True):
                 if not df_master.empty or not df_hist.empty:
                     buffer = io.BytesIO()
@@ -536,7 +580,6 @@ elif menu == "🔧 Admin Tools":
                                 if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
                                     df_stok_clean[col] = df_stok_clean[col].astype(str)
                             df_stok_clean.to_excel(writer, sheet_name='Stok Gudang', index=False)
-                        
                         if not df_hist.empty:
                             df_hist_clean = df_hist.copy()
                             if 'timestamp' in df_hist_clean.columns:
@@ -546,20 +589,16 @@ elif menu == "🔧 Admin Tools":
                             for c in cols_target:
                                 if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
                             df_hist_clean[cols_target].to_excel(writer, sheet_name='Riwayat Transaksi', index=False)
-                            
                     st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
                 else: st.warning("Data kosong.")
             st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
-            if st.button("Buka Menu Hapus Data", type="primary"):
-                st.session_state.reset_mode = True
-            
+            st.markdown('<div class="danger-card"><div class="danger-header">⚠️ Danger Zone</div><p>Hapus data permanen.</p>', unsafe_allow_html=True)
+            if st.button("Buka Menu Hapus Data", type="primary"): st.session_state.reset_mode = True
             if 'reset_mode' in st.session_state and st.session_state.reset_mode:
-                st.warning("Masukkan PIN untuk konfirmasi penghapusan total.")
+                st.warning("Masukkan PIN untuk konfirmasi.")
                 if st.text_input("PIN Konfirmasi:", type="password") == "123456":
                     if st.button(" 🔥 YA, RESET TOTAL 🔥", use_container_width=True):
-                        factory_reset('inventory')
-                        factory_reset('transactions')
+                        factory_reset('inventory'); factory_reset('transactions')
                         st.success("Reset Berhasil"); time.sleep(2); st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
