@@ -1,9 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.8 Standardized Detail)
+# APLIKASI: SN TRACKER PRO (V6.9 Clean Sidebar)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Menu "Cek Detail" di Gudang dirapikan.
-# Menggunakan format harga Rp, dan disembunyikan (Expander)
-# jika tidak sedang difilter agar rapi (Standar UI).
+# UPDATE: Menghapus tabel detail di sidebar agar lebih ringkas.
+# Detail lengkap tetap ada di Dashboard Gudang.
 # ==========================================
 
 import streamlit as st
@@ -267,7 +266,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.8 Standardized Detail", unsafe_allow_html=True)
+            st.caption("v6.9 Clean Sidebar", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -294,6 +293,7 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
         
+    # ALERT RINGKAS DI SIDEBAR (Tanpa Detail)
     if not df_master.empty:
         df_ready = df_master[df_master['status'] == 'Ready']
         if not df_ready.empty:
@@ -303,17 +303,10 @@ with st.sidebar:
             if not stok_tipis.empty:
                 st.markdown(f"""
                 <div class="sidebar-alert">
-                    ⚠️ <b>{len(stok_tipis)} Barang Menipis!</b>
+                    ⚠️ <b>{len(stok_tipis)} Barang Menipis!</b><br>
+                    <span style="font-size:12px; opacity:0.8">Cek detail di menu Gudang</span>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                with st.expander("🔍 Lihat Detail", expanded=False):
-                    st.dataframe(
-                        stok_tipis, 
-                        hide_index=True, 
-                        use_container_width=True,
-                        column_config={"jumlah": st.column_config.NumberColumn("Sisa", format="%d")}
-                    )
 
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
@@ -356,6 +349,7 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
+                        # Calculate avail first
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
