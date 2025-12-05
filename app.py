@@ -1,7 +1,9 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.2 Fix Crash)
+# APLIKASI: SN TRACKER PRO (V6.3 Stable Fix)
 # ENGINE: Supabase (PostgreSQL)
-# FIX: NameError 'avail' is not defined (Urutan kode diperbaiki)
+# FIX: 
+# 1. Error saat Reset Import Logs (APIError)
+# 2. Perbaikan fungsi logging aktivitas (Syntax Update)
 # ==========================================
 
 import streamlit as st
@@ -41,7 +43,7 @@ if 'keranjang' not in st.session_state: st.session_state.keranjang = []
 if 'search_key' not in st.session_state: st.session_state.search_key = 0 
 if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = False
 
-# --- 4. CSS CUSTOMIZATION (FULLY DYNAMIC) ---
+# --- 4. CSS CUSTOMIZATION ---
 st.markdown("""
     <style>
     /* VARIABEL DINAMIS */
@@ -53,7 +55,6 @@ st.markdown("""
         --border-color: rgba(128, 128, 128, 0.2);
     }
     
-    /* TOMBOL UTAMA */
     div.stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #0095DA 0%, #007bb5 100%);
         border: none; color: white !important; font-weight: 700;
@@ -65,8 +66,6 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 4px 10px rgba(0, 149, 218, 0.3);
     }
-    
-    /* TOMBOL LOGOUT */
     div.stButton > button[data-testid="baseButton-secondary"] {
         border: 1px solid #ff4b4b; color: #ff4b4b; border-radius: 8px;
     }
@@ -74,7 +73,6 @@ st.markdown("""
         background-color: #ff4b4b; color: white; border-color: #ff4b4b;
     }
 
-    /* CARD PRODUK KASIR */
     .product-card-container {
         background-color: var(--card-bg); padding: 25px; border-radius: 12px;
         border: 1px solid var(--border-color); border-left: 6px solid var(--brand-blue);
@@ -91,7 +89,6 @@ st.markdown("""
     }
     .big-price-tag { font-size: 36px; font-weight: 800; color: var(--brand-yellow); margin-top: 15px; margin-bottom: 10px; }
 
-    /* METRIC BOX */
     .metric-box {
         background-color: var(--card-bg); padding: 20px; border-radius: 12px;
         border: 1px solid var(--border-color); border-left: 4px solid var(--brand-blue);
@@ -100,7 +97,6 @@ st.markdown("""
     .metric-label { font-size: 14px; opacity: 0.7; font-weight: 600; text-transform: uppercase; }
     .metric-value { font-size: 28px; font-weight: 800; margin-top: 5px; }
 
-    /* ADMIN TOOLS CARDS */
     .admin-card-blue {
         padding: 20px; border: 1px solid #0095DA; background-color: rgba(0, 149, 218, 0.05);
         border-radius: 10px; margin-bottom: 15px; color: var(--text-color);
@@ -150,6 +146,25 @@ def get_import_logs():
 
 # --- WRITE DATA ---
 
+def log_import_activity(user, method, items_df):
+    """
+    Mencatat log import.
+    FIX: Menggunakan syntax Supabase .insert() bukan db.collection()
+    """
+    try:
+        items_list = items_df[['brand', 'sku', 'sn', 'price']].to_dict('records')
+        log_data = {
+            'timestamp': datetime.now().isoformat(),
+            'user': user,
+            'method': method,
+            'total_items': len(items_df),
+            'items_detail': items_list
+        }
+        supabase.table('import_logs').insert(log_data).execute()
+        clear_cache()
+    except Exception as e:
+        print(f"Log Error: {e}") # Silent error agar tidak ganggu user
+
 def add_stock_batch(user, brand, sku, price, sn_list):
     clean_sn_list = []
     for sn in sn_list:
@@ -179,8 +194,8 @@ def add_stock_batch(user, brand, sku, price, sn_list):
     if new_items:
         try:
             supabase.table('inventory').insert(new_items).execute()
-            log_data = {'timestamp': datetime.now().isoformat(), 'user': user, 'method': "Manual Input", 'total_items': len(new_items), 'items_detail': log_items}
-            supabase.table('import_logs').insert(log_data).execute()
+            # Log Activity (Fix V6.3)
+            log_import_activity(user, "Manual Input", pd.DataFrame(log_items))
             clear_cache()
         except Exception as e:
             st.error(f"Error Database: {e}")
@@ -215,8 +230,8 @@ def import_stock_from_df(user, df):
                 batch = data_to_insert[i:i + 1000]
                 supabase.table('inventory').insert(batch).execute()
             
-            log_data = {'timestamp': datetime.now().isoformat(), 'user': user, 'method': "Excel Import", 'total_items': len(data_to_insert), 'items_detail': data_to_insert}
-            supabase.table('import_logs').insert(log_data).execute()
+            # Log Activity (Fix V6.3)
+            log_import_activity(user, "Excel Import", pd.DataFrame(data_to_insert))
             clear_cache()
             return True, len(data_to_insert), len(df_dup)
         except Exception as e: return False, str(e), 0
@@ -247,7 +262,23 @@ def delete_stock(sn):
     clear_cache()
 
 def factory_reset(table_name):
-    supabase.table(table_name).delete().neq('sn' if table_name == 'inventory' else 'trx_id', 'dummy_val').execute()
+    # FIX V6.3: Identifikasi kolom kunci yang benar
+    # inventory -> sn
+    # transactions -> trx_id
+    # import_logs -> id
+    
+    target_col = "sn" # Default inventory
+    if table_name == "transactions":
+        target_col = "trx_id"
+    elif table_name == "import_logs":
+        target_col = "id"
+    
+    try:
+        # Hapus data yang tidak sama dengan 'dummy_val' (Artinya hapus semua)
+        supabase.table(table_name).delete().neq(target_col, 'dummy_val').execute()
+    except Exception as e:
+        st.error(f"Gagal reset {table_name}: {e}")
+    
     clear_cache()
 
 # --- 6. LOGIN ---
@@ -257,7 +288,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.2 Fix Crash", unsafe_allow_html=True)
+            st.caption("v6.3 Fix & Stable", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -324,8 +355,7 @@ if menu == "🛒 Kasir":
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
                         
-                        # --- PERBAIKAN DI SINI ---
-                        # Hitung 'avail' DULU sebelum ditampilkan di f-string markdown
+                        # Hitung avail DULU sebelum ditampilkan
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
                         
@@ -521,46 +551,29 @@ elif menu == "🔧 Admin Tools":
                 m1.metric("Omzet Total", format_rp(df_hist['total_bill'].sum()))
                 m2.metric("Total Transaksi", len(df_hist))
                 
-                # --- FITUR INSPEKSI TRANSAKSI (BARU) ---
                 st.divider()
                 st.subheader("🕵️‍♀️ Cek Detail Transaksi")
-                
-                # Dropdown pilih Trx ID
                 trx_options = df_hist['trx_id'].tolist()
-                selected_trx = st.selectbox("Pilih ID Transaksi untuk melihat detail:", ["-- Pilih --"] + trx_options)
+                selected_trx = st.selectbox("Pilih ID Transaksi:", ["-- Pilih --"] + trx_options)
                 
                 if selected_trx != "-- Pilih --":
-                    # Ambil data baris terpilih
                     trx_data = df_hist[df_hist['trx_id'] == selected_trx].iloc[0]
-                    
-                    # Tampilkan Info Header
                     c_info1, c_info2, c_info3 = st.columns(3)
                     ts_str = pd.to_datetime(trx_data['timestamp']).strftime("%d %b %Y, %H:%M")
                     c_info1.info(f"User: {trx_data['user']}")
                     c_info2.info(f"Waktu: {ts_str}")
                     c_info3.success(f"Total: {format_rp(trx_data['total_bill'])}")
                     
-                    # Tampilkan Tabel Detail Item
                     if 'item_details' in trx_data and trx_data['item_details']:
-                        # item_details di Supabase sudah otomatis jadi list of dict
                         items = trx_data['item_details']
                         if isinstance(items, list):
                             df_items = pd.DataFrame(items)
-                            
-                            # Filter kolom agar rapi
                             cols_wanted = ['sku', 'brand', 'sn', 'price']
                             cols_avail = [c for c in cols_wanted if c in df_items.columns]
-                            
                             st.write("##### 📋 Daftar Barang Terjual:")
-                            st.dataframe(
-                                df_items[cols_avail], 
-                                use_container_width=True,
-                                column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d")}
-                            )
-                        else:
-                            st.warning("Format detail item tidak dikenali.")
-                    else:
-                        st.warning("Detail item tidak tersedia untuk transaksi ini.")
+                            st.dataframe(df_items[cols_avail], use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d")})
+                        else: st.warning("Format detail item tidak dikenali.")
+                    else: st.warning("Detail item tidak tersedia.")
                 
                 st.divider()
                 st.subheader("Semua Riwayat")
