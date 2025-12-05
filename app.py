@@ -1,8 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V5.6 Full UI Polish)
+# APLIKASI: SN TRACKER PRO (V5.7 Dark Mode Fix)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Tampilan Gudang (Dashboard, Input, Edit) dipercantik
-# agar setara dengan menu Kasir & Admin.
+# FIX: Tampilan UI sekarang otomatis menyesuaikan
+# tema Terang/Gelap (Adaptive CSS)
 # ==========================================
 
 import streamlit as st
@@ -42,31 +42,55 @@ if 'keranjang' not in st.session_state: st.session_state.keranjang = []
 if 'search_key' not in st.session_state: st.session_state.search_key = 0 
 if 'confirm_logout' not in st.session_state: st.session_state.confirm_logout = False
 
-# --- 4. CSS CUSTOMIZATION (FULL THEME) ---
+# --- 4. CSS CUSTOMIZATION (ADAPTIVE THEME) ---
 st.markdown("""
     <style>
-    /* VARIAN WARNA */
+    /* VARIABEL WARNA (DEFAULT LIGHT) */
     :root { 
         --brand-blue: #0095DA; 
         --brand-yellow: #F99D1C; 
+        
+        /* Warna Adaptif (Akan berubah di Dark Mode) */
         --bg-card: #ffffff;
-        --text-dark: #333333;
+        --text-main: #333333;
+        --text-sub: #666666;
+        --border-color: #e0e0e0;
+        --info-bg: #f0f9ff;
+        --info-border: #b9e6fe;
+        --danger-bg: #fef2f2;
+        --danger-border: #fecaca;
+        --metric-bg: #f8f9fa;
+    }
+
+    /* DETEKSI DARK MODE & OVERRIDE WARNA */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg-card: #262730; /* Warna latar kartu gelap */
+            --text-main: #ffffff;
+            --text-sub: #d0d0d0;
+            --border-color: #464b5c;
+            --info-bg: rgba(0, 149, 218, 0.15); /* Biru transparan */
+            --info-border: #0095DA;
+            --danger-bg: rgba(255, 75, 75, 0.15); /* Merah transparan */
+            --danger-border: #ff4b4b;
+            --metric-bg: #1e1e1e;
+        }
     }
     
     /* TOMBOL UTAMA */
     div.stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #0095DA 0%, #007bb5 100%);
         border: none; 
-        color: white; 
+        color: white !important; 
         font-weight: 700;
         padding: 10px 20px; 
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 149, 218, 0.2);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
         transition: all 0.3s ease;
     }
     div.stButton > button[kind="primary"]:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 149, 218, 0.3);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
     }
     
     /* TOMBOL SEKUNDER / LOGOUT */
@@ -75,6 +99,7 @@ st.markdown("""
         color: #ff4b4b;
         border-radius: 8px;
         font-weight: 600;
+        background-color: transparent;
     }
     div.stButton > button[data-testid="baseButton-secondary"]:hover {
         background-color: #ff4b4b; 
@@ -86,18 +111,19 @@ st.markdown("""
         background-color: var(--bg-card);
         padding: 25px;
         border-radius: 12px;
+        border: 1px solid var(--border-color);
         border-left: 6px solid var(--brand-blue);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         margin-bottom: 20px;
     }
     .product-title {
         font-size: 22px;
         font-weight: 700;
-        color: var(--text-dark);
+        color: var(--text-main);
         margin-bottom: 5px;
     }
     .product-badge {
-        background-color: #e3f2fd;
+        background-color: rgba(0, 149, 218, 0.15);
         color: var(--brand-blue);
         padding: 4px 10px;
         border-radius: 12px;
@@ -106,8 +132,8 @@ st.markdown("""
         margin-right: 5px;
     }
     .product-stock {
-        background-color: #e8f5e9;
-        color: #2e7d32;
+        background-color: rgba(46, 125, 50, 0.15);
+        color: #4caf50; /* Hijau terang agar terbaca di dark mode */
         padding: 4px 10px;
         border-radius: 12px;
         font-size: 12px;
@@ -125,8 +151,8 @@ st.markdown("""
     /* GENERAL CARDS (Gudang & Admin) */
     .info-card {
         padding: 20px;
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         margin-bottom: 20px;
@@ -136,42 +162,56 @@ st.markdown("""
         font-size: 16px;
         color: var(--brand-blue);
         margin-bottom: 15px;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--border-color);
         padding-bottom: 10px;
     }
 
     /* METRIC BOX (Dashboard Gudang) */
     .metric-box {
-        background: linear-gradient(135deg, #f6f9fc 0%, #eef2f5 100%);
+        background-color: var(--metric-bg);
         padding: 20px;
         border-radius: 12px;
+        border: 1px solid var(--border-color);
         border-left: 4px solid var(--brand-blue);
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         text-align: center;
     }
-    .metric-label { font-size: 14px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-value { font-size: 28px; font-weight: 800; color: #333; margin-top: 5px; }
+    .metric-label { font-size: 14px; color: var(--text-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-value { font-size: 28px; font-weight: 800; color: var(--text-main); margin-top: 5px; }
 
-    /* DANGER ZONE CARD */
-    .danger-card {
+    /* ADMIN TOOLS CARDS */
+    .admin-card-blue {
         padding: 20px;
-        background-color: #fff5f5;
-        border: 1px solid #fed7d7;
-        border-radius: 12px;
+        background-color: var(--info-bg);
+        border: 1px solid var(--info-border);
+        border-radius: 10px;
         margin-bottom: 15px;
+        color: var(--text-main);
     }
-    .danger-header {
-        color: #c53030;
+    .admin-card-red {
+        padding: 20px;
+        background-color: var(--danger-bg);
+        border: 1px solid #ff4b4b;
+        border-radius: 10px;
+        margin-bottom: 15px;
+        color: var(--text-main);
+    }
+    .admin-header {
         font-weight: 700;
+        font-size: 18px;
         margin-bottom: 10px;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
     }
     
     /* MODIFIKASI BAWAAN STREAMLIT */
     .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
-    div[data-testid="stExpander"] { border: 1px solid #eee; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+    div[data-testid="stExpander"] { 
+        border: 1px solid var(--border-color); 
+        background-color: var(--bg-card);
+        border-radius: 8px; 
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -316,7 +356,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v5.6 Beautiful UI", unsafe_allow_html=True)
+            st.caption("v5.7 Dark Mode Support", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -569,7 +609,8 @@ elif menu == "🔧 Admin Tools":
             else: st.info("Belum ada transaksi")
 
         with tab2:
-            st.markdown('<div class="info-card"><div class="info-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
+            st.markdown('<div class="admin-card-blue"><div class="admin-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
+            
             if st.button("DOWNLOAD DATABASE LENGKAP (.xlsx)", use_container_width=True):
                 if not df_master.empty or not df_hist.empty:
                     buffer = io.BytesIO()
@@ -580,6 +621,7 @@ elif menu == "🔧 Admin Tools":
                                 if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
                                     df_stok_clean[col] = df_stok_clean[col].astype(str)
                             df_stok_clean.to_excel(writer, sheet_name='Stok Gudang', index=False)
+                        
                         if not df_hist.empty:
                             df_hist_clean = df_hist.copy()
                             if 'timestamp' in df_hist_clean.columns:
@@ -589,16 +631,20 @@ elif menu == "🔧 Admin Tools":
                             for c in cols_target:
                                 if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
                             df_hist_clean[cols_target].to_excel(writer, sheet_name='Riwayat Transaksi', index=False)
+                            
                     st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
                 else: st.warning("Data kosong.")
             st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown('<div class="danger-card"><div class="danger-header">⚠️ Danger Zone</div><p>Hapus data permanen.</p>', unsafe_allow_html=True)
-            if st.button("Buka Menu Hapus Data", type="primary"): st.session_state.reset_mode = True
+            st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
+            if st.button("Buka Menu Hapus Data", type="primary"):
+                st.session_state.reset_mode = True
+            
             if 'reset_mode' in st.session_state and st.session_state.reset_mode:
-                st.warning("Masukkan PIN untuk konfirmasi.")
+                st.warning("Masukkan PIN untuk konfirmasi penghapusan total.")
                 if st.text_input("PIN Konfirmasi:", type="password") == "123456":
                     if st.button(" 🔥 YA, RESET TOTAL 🔥", use_container_width=True):
-                        factory_reset('inventory'); factory_reset('transactions')
+                        factory_reset('inventory')
+                        factory_reset('transactions')
                         st.success("Reset Berhasil"); time.sleep(2); st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
