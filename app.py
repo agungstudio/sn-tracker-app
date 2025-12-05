@@ -1,7 +1,7 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V3.6 Copy Feature)
+# APLIKASI: SN TRACKER PRO (V3.7 Copy per Item)
 # ENGINE: Google Firestore
-# FITUR UTAMA: One-Click Copy SN untuk Kasir
+# FITUR UTAMA: Tombol Copy SN per Item di Keranjang
 # ==========================================
 
 import streamlit as st
@@ -72,7 +72,10 @@ st.markdown("""
         background-color: var(--brand-blue); color: white; padding: 8px 15px; 
         border-radius: 6px; margin-bottom: 15px; font-weight: bold; 
     }
-    .stCode { font-family: 'Courier New', monospace; font-weight: bold; }
+    /* Mengatur agar st.code tidak terlalu boros tempat di keranjang */
+    div[data-testid="stVerticalBlock"] .stCode {
+        margin-bottom: 0px !important;
+    }
     .alert-stock {
         background-color: rgba(255, 0, 0, 0.1); color: #e53935; padding: 10px; 
         border-radius: 5px; border: 1px solid #ef9a9a; margin-bottom: 10px; font-weight: bold; font-size: 14px;
@@ -186,7 +189,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>BLIBLI <span style='color:#F99D1C;'>POS</span></h1>", unsafe_allow_html=True)
-            st.caption("v3.6 Quick Copy Update", unsafe_allow_html=True)
+            st.caption("v3.7 Copy per Item", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -275,40 +278,40 @@ if menu == "🛒 Transaksi":
         with st.container(border=True):
             if st.session_state.keranjang:
                 tot = 0
+                st.caption("Klik tombol kecil di kanan SN untuk Copy.")
                 for i, x in enumerate(st.session_state.keranjang):
                     tot += x['price']
-                    c1, c2 = st.columns([2,1])
-                    c1.markdown(f"**{x['sku']}**\n<span style='font-size:12px;color:#666'>{x['sn']}</span>", unsafe_allow_html=True)
-                    c2.markdown(f"<div style='text-align:right'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
+                    
+                    # Layout Item
+                    st.markdown(f"**{x['sku']}**") # Nama Barang
+                    
+                    # Grid: Kiri untuk SN (Code block), Kanan untuk Harga
+                    c_sn_code, c_price = st.columns([2.5, 1]) 
+                    with c_sn_code:
+                        # Ini yang membuat tombol Copy muncul per item
+                        st.code(x['sn'], language="text") 
+                    with c_price:
+                         st.markdown(f"<div style='text-align:right; margin-top: 5px; font-weight:bold;'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
+                    
                     st.divider()
-                
-                # FITUR BARU: COPY SN OTOMATIS
-                st.info("📋 **Copy SN (Paste ke POS Toko):**")
-                sn_string = "\n".join([item['sn'] for item in st.session_state.keranjang])
-                st.code(sn_string, language="text") # Blok ini punya tombol copy bawaan
 
                 st.markdown(f"<div style='text-align:right'>Total Tagihan<br><span class='big-price'>{format_rp(tot)}</span></div>", unsafe_allow_html=True)
                 
                 if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
-                    
-                    # Simpan data sementara untuk ditampilkan setelah reload
-                    st.session_state.last_trx = {'id': tid, 'total': tbil, 'sn': sn_string}
-                    st.session_state.keranjang = []
+                    st.session_state.keranjang = []; st.balloons(); st.success("Transaksi Sukses!")
+                    st.session_state.last_trx = {'id': tid, 'total': tbil} # Simpan state
                     st.rerun()
 
                 if st.button("❌ Batal", use_container_width=True):
                     st.session_state.keranjang = []; st.rerun()
             else:
-                # Cek jika baru saja transaksi sukses
+                # Menampilkan struk terakhir jika ada
                 if 'last_trx' in st.session_state and st.session_state.last_trx:
                     st.success("✅ Transaksi Berhasil!")
-                    st.markdown(f"**ID:** {st.session_state.last_trx['id']}")
-                    st.markdown(f"**Total:** {format_rp(st.session_state.last_trx['total'])}")
-                    st.markdown("📋 **Copy SN Terjual:**")
-                    st.code(st.session_state.last_trx['sn'], language="text")
-                    
-                    if st.button("Transaksi Baru"):
+                    st.write(f"ID: {st.session_state.last_trx['id']}")
+                    st.write(f"Total: {format_rp(st.session_state.last_trx['total'])}")
+                    if st.button("Tutup"):
                         del st.session_state.last_trx
                         st.rerun()
                 else:
