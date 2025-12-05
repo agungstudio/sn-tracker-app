@@ -17,7 +17,7 @@ import re
 
 # --- 1. SETUP HALAMAN ---
 st.set_page_config(
-    page_title="Blibli POS Gold",
+    page_title="SN Tracker",
     page_icon="💎",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -206,9 +206,9 @@ def login_page():
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
-                    if u == "admin" and p == "admin123":
+                    if u == "admin" and p == "password":
                         st.session_state.logged_in = True; st.session_state.user_role = "ADMIN"; st.rerun()
-                    elif u == "kasir" and p == "blibli2025":
+                    elif u == "kasir" and p == "blibli":
                         st.session_state.logged_in = True; st.session_state.user_role = "KASIR"; st.rerun()
                     else: st.error("Akses Ditolak")
 
@@ -217,7 +217,7 @@ if not st.session_state.logged_in: login_page(); st.stop()
 # --- 7. SIDEBAR ---
 df_master = get_inventory_df()
 with st.sidebar:
-    st.markdown("### 💎 Blibli POS")
+    st.markdown("### 💎 SN Tracker")
     st.caption(f"User: **{st.session_state.user_role}**")
     menu_items = ["🛒 Transaksi", "📦 Gudang", "🔧 Admin Tools"] if st.session_state.user_role == "ADMIN" else ["🛒 Transaksi", "📦 Gudang"]
     menu = st.radio("Navigasi", menu_items, label_visibility="collapsed")
@@ -454,3 +454,4 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
                                 time.sleep(2); st.rerun()
                         else: st.error("PIN SALAH! Akses ditolak.")
     else: st.error("Akses Khusus Admin")
+
