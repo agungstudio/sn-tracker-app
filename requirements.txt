@@ -2,3 +2,5 @@ streamlit
 firebase-admin
 pandas
 plotly
+xlsxwriter
+openpyxl
