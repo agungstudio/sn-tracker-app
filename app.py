@@ -234,7 +234,7 @@ with st.sidebar:
 
 # === KASIR ===
 if menu == "🛒 Transaksi":
-    st.title("🛒 Kasir Point of Sales")
+    st.title("🛒 Kasir")
     
     c_product, c_cart = st.columns([1.8, 1])
     
@@ -454,5 +454,6 @@ elif menu == "🔧 Admin Tools" or menu == "📊 Analitik Bisnis":
                                 time.sleep(2); st.rerun()
                         else: st.error("PIN SALAH! Akses ditolak.")
     else: st.error("Akses Khusus Admin")
+
 
 
