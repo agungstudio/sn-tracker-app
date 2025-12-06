@@ -1,8 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V6.9 Clean Sidebar)
+# APLIKASI: SN TRACKER PRO (V7.0 Excel Polish)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Menghapus tabel detail di sidebar agar lebih ringkas.
-# Detail lengkap tetap ada di Dashboard Gudang.
+# UPDATE: Output Excel Backup kini otomatis RAPI
+# (Auto-width column, Header warna, Border tabel)
 # ==========================================
 
 import streamlit as st
@@ -259,6 +259,29 @@ def factory_reset(table_name):
     except Exception as e: st.error(f"Gagal reset {table_name}: {e}")
     clear_cache()
 
+# --- FUNGSI HELPER EXCEL RAPI ---
+def format_excel(writer, df, sheet_name):
+    # Tulis data tanpa header default
+    df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1, header=False)
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+    
+    # Style Header
+    header_format = workbook.add_format({
+        'bold': True, 'text_wrap': True, 'valign': 'top',
+        'fg_color': '#0095DA', 'font_color': '#FFFFFF', 'border': 1
+    })
+    
+    # Style Body (Opsional, disini pakai default tapi auto width)
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(0, col_num, value, header_format)
+        # Hitung lebar kolom maksimal
+        max_len = max(
+            df[value].astype(str).apply(len).max() if not df.empty else 0,
+            len(str(value))
+        ) + 2
+        worksheet.set_column(col_num, col_num, max_len)
+
 # --- 6. LOGIN ---
 def login_page():
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -266,7 +289,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v6.9 Clean Sidebar", unsafe_allow_html=True)
+            st.caption("v7.0 Excel Polish", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -293,20 +316,13 @@ with st.sidebar:
         time.sleep(0.5)
         st.rerun()
         
-    # ALERT RINGKAS DI SIDEBAR (Tanpa Detail)
     if not df_master.empty:
         df_ready = df_master[df_master['status'] == 'Ready']
         if not df_ready.empty:
             stok_rekap = df_ready.groupby(['brand', 'sku']).size().reset_index(name='jumlah')
             stok_tipis = stok_rekap[stok_rekap['jumlah'] < 5]
-            
             if not stok_tipis.empty:
-                st.markdown(f"""
-                <div class="sidebar-alert">
-                    ⚠️ <b>{len(stok_tipis)} Barang Menipis!</b><br>
-                    <span style="font-size:12px; opacity:0.8">Cek detail di menu Gudang</span>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"""<div class="sidebar-alert">⚠️ <b>{len(stok_tipis)} Barang Menipis!</b></div>""", unsafe_allow_html=True)
 
     st.markdown("<br>" * 3, unsafe_allow_html=True) 
     st.markdown("---")
@@ -332,36 +348,22 @@ with st.sidebar:
 # === KASIR ===
 if menu == "🛒 Kasir":
     st.title("🛒 Kasir")
-    
     c_product, c_cart = st.columns([1.8, 1])
     with c_product:
         st.info("💡 Ketik Nama Barang / Scan Barcode")
-        
         if not df_master.empty:
             df_ready = df_master[df_master['status'] == 'Ready']
             if not df_ready.empty:
                 df_ready['display'] = "[" + df_ready['brand'] + "] " + df_ready['sku'] + " (" + df_ready['price'].apply(format_rp) + ")"
                 search_options = sorted(df_ready['display'].unique())
                 pilih_barang = st.selectbox("Pilih Produk:", ["-- Pilih Produk --"] + search_options, key=f"sb_{st.session_state.search_key}", label_visibility="collapsed")
-                
                 if pilih_barang != "-- Pilih Produk --":
                     rows = df_ready[df_ready['display'] == pilih_barang]
                     if not rows.empty:
                         item = rows.iloc[0]; sku = item['sku']
-                        
-                        # Calculate avail first
                         sn_cart = [x['sn'] for x in st.session_state.keranjang]
                         avail = df_ready[(df_ready['sku'] == sku) & (~df_ready['sn'].isin(sn_cart))]
-                        
-                        st.markdown(f"""
-                        <div class="product-card-container">
-                            <span class="product-badge">{item['brand']}</span>
-                            <span class="product-stock">Stok Tersedia: {len(avail)}</span>
-                            <div class="product-title">{sku}</div>
-                            <div class="big-price-tag">{format_rp(item['price'])}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
+                        st.markdown(f"""<div class="product-card-container"><span class="product-badge">{item['brand']}</span><span class="product-stock">Stok Tersedia: {len(avail)}</span><div class="product-title">{sku}</div><div class="big-price-tag">{format_rp(item['price'])}</div></div>""", unsafe_allow_html=True)
                         col_sn, col_add = st.columns([2, 1])
                         with col_sn:
                             sn_list_sorted = sorted(avail['sn'].tolist(), key=natural_sort_key)
@@ -370,9 +372,7 @@ if menu == "🛒 Kasir":
                             if st.button("TAMBAH ➕", type="primary", use_container_width=True):
                                 if p_sn:
                                     for s in p_sn: st.session_state.keranjang.append(avail[avail['sn']==s].iloc[0].to_dict())
-                                    st.session_state.search_key += 1; 
-                                    st.toast(f"{len(p_sn)} barang masuk keranjang!", icon="🛒")
-                                    time.sleep(0.1); st.rerun()
+                                    st.session_state.search_key += 1; st.toast(f"{len(p_sn)} barang masuk keranjang!", icon="🛒"); time.sleep(0.1); st.rerun()
                                 else: st.warning("Pilih SN dulu")
                     else: st.warning("Barang tidak ditemukan.")
             else: st.warning("Stok Gudang Kosong.")
@@ -389,22 +389,13 @@ if menu == "🛒 Kasir":
                     with c_sn_code: st.code(x['sn'], language="text") 
                     with c_price: st.markdown(f"<div style='text-align:right; margin-top: 5px; font-weight:bold;'>{format_rp(x['price'])}</div>", unsafe_allow_html=True)
                     st.divider()
-            
             with st.container(border=True):
                 tot = sum(item['price'] for item in st.session_state.keranjang)
                 st.markdown(f"<div style='text-align:right'>Total Tagihan<br><span class='big-price'>{format_rp(tot)}</span></div>", unsafe_allow_html=True)
                 if st.button("✅ BAYAR SEKARANG", type="primary", use_container_width=True):
                     tid, tbil = process_checkout(st.session_state.user_role, st.session_state.keranjang)
-                    if tid:
-                        st.session_state.keranjang = []; st.balloons(); 
-                        st.toast("Transaksi Berhasil Disimpan!", icon="✅")
-                        st.success("Transaksi Sukses!")
-                        st.session_state.last_trx = {'id': tid, 'total': tbil}
-                        st.rerun()
-                if st.button("❌ Batal", use_container_width=True):
-                    st.session_state.keranjang = []; 
-                    st.toast("Keranjang dibersihkan.", icon="🗑️")
-                    st.rerun()
+                    if tid: st.session_state.keranjang = []; st.balloons(); st.toast("Transaksi Berhasil Disimpan!", icon="✅"); st.success("Transaksi Sukses!"); st.session_state.last_trx = {'id': tid, 'total': tbil}; st.rerun()
+                if st.button("❌ Batal", use_container_width=True): st.session_state.keranjang = []; st.toast("Keranjang dibersihkan.", icon="🗑️"); st.rerun()
         else:
             with st.container(border=True):
                 if 'last_trx' in st.session_state and st.session_state.last_trx:
@@ -417,10 +408,9 @@ if menu == "🛒 Kasir":
 # === GUDANG ===
 elif menu == "📦 Gudang":
     st.title("📦 Manajemen Gudang")
-    # df_master sudah diload di global, jadi aman
+    df_master = get_inventory_df() # Load data
     tabs = st.tabs(["📊 Dashboard Stok", "🔍 Cek Detail", "➕ Input Barang", "📜 Riwayat Import", "🛠️ Edit/Hapus"])
     
-    # TAB 1: DASHBOARD
     with tabs[0]:
         st.subheader("Ringkasan Stok")
         if not df_master.empty:
@@ -428,47 +418,22 @@ elif menu == "📦 Gudang":
             if not df_ready.empty:
                 stok_rekap = df_ready.groupby(['brand', 'sku', 'price']).size().reset_index(name='Total Stok')
                 stok_rekap = stok_rekap.sort_values(by=['brand', 'sku'])
-                
-                # --- AREA PERINGATAN STOK MENIPIS (TANPA EMOJI SEGITIGA) ---
                 stok_tipis = stok_rekap[stok_rekap['Total Stok'] < 5]
                 if not stok_tipis.empty:
                     st.error(f"⚠️ PERHATIAN: {len(stok_tipis)} Barang Stoknya Menipis (< 5 unit)")
-                    
-                    # FIX: Menghapus emoji merah segitiga
                     with st.expander("Klik untuk Lihat Detail Barang Menipis", expanded=False):
-                        st.dataframe(
-                            stok_tipis, 
-                            use_container_width=True,
-                            column_config={
-                                "price": st.column_config.NumberColumn("Harga", format="Rp %d"),
-                                "Total Stok": st.column_config.ProgressColumn("Sisa Stok", format="%d", min_value=0, max_value=5, help="Segera restock!")
-                            },
-                            hide_index=True
-                        )
+                        st.dataframe(stok_tipis, use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d"), "Total Stok": st.column_config.ProgressColumn("Sisa Stok", format="%d", min_value=0, max_value=5, help="Segera restock!")}, hide_index=True)
                     st.markdown("---")
-                # ---------------------------------------------
-
                 c1, c2, c3 = st.columns(3)
                 with c1: st.markdown(f"""<div class="metric-box"><div class="metric-label">TOTAL UNIT</div><div class="metric-value">{len(df_ready)}</div></div>""", unsafe_allow_html=True)
                 with c2: st.markdown(f"""<div class="metric-box"><div class="metric-label">NILAI ASET</div><div class="metric-value">{format_rp(df_ready['price'].sum())}</div></div>""", unsafe_allow_html=True)
                 with c3: st.markdown(f"""<div class="metric-box"><div class="metric-label">JENIS PRODUK</div><div class="metric-value">{len(stok_rekap)}</div></div>""", unsafe_allow_html=True)
-                
                 st.markdown("<br>", unsafe_allow_html=True)
-                
                 max_stok = int(stok_rekap['Total Stok'].max())
-                st.dataframe(
-                    stok_rekap, 
-                    use_container_width=True, 
-                    column_config={
-                        "price": st.column_config.NumberColumn("Harga", format="Rp %d"), 
-                        "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)
-                    }, 
-                    hide_index=True
-                )
+                st.dataframe(stok_rekap, use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d"), "Total Stok": st.column_config.ProgressColumn("Stok", format="%d", min_value=0, max_value=max_stok)}, hide_index=True)
             else: st.info("Gudang Kosong.")
         else: st.info("Database Kosong.")
 
-    # TAB 2: DETAIL SN (FORMAT STANDAR & EXPANDER)
     with tabs[1]:
         st.markdown('<div class="info-card"><div class="info-header">🔍 Pencarian Detail SN</div>', unsafe_allow_html=True)
         if not df_master.empty:
@@ -476,7 +441,6 @@ elif menu == "📦 Gudang":
             with c_s1: q = st.text_input("Cari SN/SKU:", placeholder="Ketik nomor SN...")
             with c_s2: fb = st.selectbox("Brand", ["All"] + sorted(df_master['brand'].unique().tolist()))
             dv = df_master.copy()
-            
             is_filtered = False
             if q: 
                 dv = dv[dv['sku'].str.contains(q, case=False) | dv['sn'].str.contains(q, case=False)]
@@ -484,21 +448,13 @@ elif menu == "📦 Gudang":
             if fb != "All": 
                 dv = dv[dv['brand'] == fb]
                 is_filtered = True
-            
-            # --- KONFIGURASI KOLOM STANDAR ---
-            col_config = {
-                "price": st.column_config.NumberColumn("Harga", format="Rp %d"),
-                "sn": "Serial Number",
-                "sku": "Nama Barang"
-            }
-            
+            col_config = {"price": st.column_config.NumberColumn("Harga", format="Rp %d"), "sn": "Serial Number", "sku": "Nama Barang"}
             if is_filtered:
                 st.success(f"Ditemukan {len(dv)} barang.")
                 st.dataframe(dv[['sn','sku','brand','price','status']], use_container_width=True, column_config=col_config, hide_index=True)
             else:
                 with st.expander(f"📋 Tampilkan Semua Data ({len(dv)} Barang)", expanded=False):
                     st.dataframe(dv[['sn','sku','brand','price','status']], use_container_width=True, column_config=col_config, hide_index=True)
-        
         st.markdown('</div>', unsafe_allow_html=True)
 
     with tabs[2]:
@@ -506,7 +462,6 @@ elif menu == "📦 Gudang":
             st.markdown('<div class="info-card"><div class="info-header">➕ Input Stok Baru</div>', unsafe_allow_html=True)
             mode = st.radio("Metode:", ["Manual", "Upload Excel"], horizontal=True)
             st.divider()
-            
             if mode == "Manual":
                 with st.form("in", clear_on_submit=True):
                     c1,c2,c3 = st.columns(3); b=c1.text_input("Brand"); s=c2.text_input("SKU"); p=c3.number_input("Harga", step=5000)
@@ -514,27 +469,18 @@ elif menu == "📦 Gudang":
                     if st.form_submit_button("SIMPAN", type="primary"):
                         if b and s and sn: 
                             added, dups, dup_list = add_stock_batch(st.session_state.user_role, b, s, p, sn.strip().split('\n'))
-                            if added > 0: 
-                                st.toast(f"Berhasil input {added} item baru!", icon="✅")
-                                st.success(f"✅ Berhasil input {added} item baru.")
-                            if dups > 0: 
-                                st.toast(f"Ada {dups} item duplikat ditolak.", icon="⚠️")
-                                st.error(f"❌ Gagal {dups} item karena Duplikat.")
-                                st.write("List Duplikat:", dup_list)
+                            if added > 0: st.toast(f"Berhasil input {added} item baru!", icon="✅"); st.success(f"✅ Berhasil input {added} item baru.")
+                            if dups > 0: st.toast(f"Ada {dups} item duplikat ditolak.", icon="⚠️"); st.error(f"❌ Gagal {dups} item karena Duplikat."); st.write("List Duplikat:", dup_list)
                             time.sleep(2); st.rerun()
             else:
                 template_df = pd.DataFrame([{'brand': 'SAMSUNG', 'sku': 'GALAXY A55 5G', 'price': 6000000, 'sn': 'SN1001'}])
                 csv_buffer = template_df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Template Excel/CSV", data=csv_buffer, file_name="template_stok.csv", mime="text/csv")
-                
                 uf = st.file_uploader("Upload File CSV/Excel", type=['xlsx','csv'])
                 if uf and st.button("PROSES IMPORT", type="primary"):
                     df = pd.read_csv(uf) if uf.name.endswith('.csv') else pd.read_excel(uf)
                     ok, added, dups = import_stock_from_df(st.session_state.user_role, df)
-                    if ok: 
-                        st.toast(f"Import Selesai! (+{added})", icon="✅")
-                        st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}")
-                        time.sleep(2); st.rerun()
+                    if ok: st.toast(f"Import Selesai! (+{added})", icon="✅"); st.success(f"✅ Import Selesai! Berhasil: {added}, Duplikat: {dups}"); time.sleep(2); st.rerun()
                     else: st.error(added)
             st.markdown('</div>', unsafe_allow_html=True)
         else: st.warning("Khusus Admin")
@@ -560,14 +506,8 @@ elif menu == "📦 Gudang":
                     for i, r in de.iterrows():
                         with st.expander(f"{r['sku']} ({r['sn']})"):
                             np = st.number_input("Harga", value=int(r['price']), key=f"p{r['sn']}")
-                            if st.button("Update", key=f"u{r['sn']}"): 
-                                update_stock_price(r['sn'], np)
-                                st.toast("Harga berhasil diupdate!", icon="✅")
-                                time.sleep(1); st.rerun()
-                            if st.button("Hapus", key=f"d{r['sn']}", type="primary"): 
-                                delete_stock(r['sn'])
-                                st.toast("Data berhasil dihapus!", icon="🗑️")
-                                time.sleep(1); st.rerun()
+                            if st.button("Update", key=f"u{r['sn']}"): update_stock_price(r['sn'], np); st.toast("Harga berhasil diupdate!", icon="✅"); time.sleep(1); st.rerun()
+                            if st.button("Hapus", key=f"d{r['sn']}", type="primary"): delete_stock(r['sn']); st.toast("Data berhasil dihapus!", icon="🗑️"); time.sleep(1); st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
 # === ADMIN TOOLS ===
@@ -583,12 +523,10 @@ elif menu == "🔧 Admin Tools":
                 m1, m2 = st.columns(2)
                 m1.metric("Omzet Total", format_rp(df_hist['total_bill'].sum()))
                 m2.metric("Total Transaksi", len(df_hist))
-                
                 st.divider()
                 st.subheader("🕵️‍♀️ Cek Detail Transaksi")
                 trx_options = df_hist['trx_id'].tolist()
                 selected_trx = st.selectbox("Pilih ID Transaksi:", ["-- Pilih --"] + trx_options)
-                
                 if selected_trx != "-- Pilih --":
                     trx_data = df_hist[df_hist['trx_id'] == selected_trx].iloc[0]
                     c_info1, c_info2, c_info3 = st.columns(3)
@@ -596,7 +534,6 @@ elif menu == "🔧 Admin Tools":
                     c_info1.info(f"User: {trx_data['user']}")
                     c_info2.info(f"Waktu: {ts_str}")
                     c_info3.success(f"Total: {format_rp(trx_data['total_bill'])}")
-                    
                     if 'item_details' in trx_data and trx_data['item_details']:
                         items = trx_data['item_details']
                         if isinstance(items, list):
@@ -604,16 +541,9 @@ elif menu == "🔧 Admin Tools":
                             cols_wanted = ['sku', 'brand', 'sn', 'price']
                             cols_avail = [c for c in cols_wanted if c in df_items.columns]
                             st.write("##### 📋 Daftar Barang Terjual:")
-                            st.dataframe(
-                                df_items[cols_avail], 
-                                use_container_width=True,
-                                column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d")}
-                            )
-                        else:
-                            st.warning("Format detail item tidak dikenali.")
-                    else:
-                        st.warning("Detail item tidak tersedia.")
-                
+                            st.dataframe(df_items[cols_avail], use_container_width=True, column_config={"price": st.column_config.NumberColumn("Harga", format="Rp %d")})
+                        else: st.warning("Format detail item tidak dikenali.")
+                    else: st.warning("Detail item tidak tersedia.")
                 st.divider()
                 st.subheader("Semua Riwayat")
                 st.dataframe(df_hist[['trx_id', 'timestamp', 'user', 'total_bill']], use_container_width=True)
@@ -625,12 +555,14 @@ elif menu == "🔧 Admin Tools":
                 if not df_master.empty or not df_hist.empty:
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        # --- IMPLEMENTASI FORMATTER RAPI ---
                         if not df_master.empty:
                             df_stok_clean = df_master.copy()
                             for col in df_stok_clean.columns:
                                 if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
                                     df_stok_clean[col] = df_stok_clean[col].astype(str)
-                            df_stok_clean.to_excel(writer, sheet_name='Stok Gudang', index=False)
+                            format_excel(writer, df_stok_clean, 'Stok Gudang')
+                        
                         if not df_hist.empty:
                             df_hist_clean = df_hist.copy()
                             if 'timestamp' in df_hist_clean.columns:
@@ -639,7 +571,8 @@ elif menu == "🔧 Admin Tools":
                             cols_target = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
                             for c in cols_target:
                                 if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
-                            df_hist_clean[cols_target].to_excel(writer, sheet_name='Riwayat Transaksi', index=False)
+                            format_excel(writer, df_hist_clean[cols_target], 'Riwayat Transaksi')
+                    
                     st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
                     st.toast("File Backup Siap!", icon="📂")
                 else: st.warning("Data kosong.")
@@ -647,26 +580,18 @@ elif menu == "🔧 Admin Tools":
 
             st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
             hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
-            
             if hapus_opsi != "-- Pilih Tindakan --":
                 st.warning(f"Anda akan melakukan: {hapus_opsi}")
                 pin_konfirm = st.text_input("Masukkan PIN Konfirmasi:", type="password")
-                
                 if st.button("🔥 JALANKAN PENGHAPUSAN 🔥", type="primary", use_container_width=True):
                     if pin_konfirm == "123456":
                         with st.spinner("Sedang menghapus..."):
                             if "1." in hapus_opsi:
-                                factory_reset('transactions')
-                                st.toast("Riwayat Transaksi Dihapus!", icon="🗑️")
-                                st.success("Riwayat Transaksi Telah Dihapus.")
+                                factory_reset('transactions'); st.toast("Riwayat Transaksi Dihapus!", icon="🗑️"); st.success("Riwayat Transaksi Telah Dihapus.")
                             elif "2." in hapus_opsi:
-                                factory_reset('inventory')
-                                st.toast("Stok Dihapus!", icon="🗑️")
-                                st.success("Stok Barang Telah Dikosongkan.")
+                                factory_reset('inventory'); st.toast("Stok Dihapus!", icon="🗑️"); st.success("Stok Barang Telah Dikosongkan.")
                             elif "3." in hapus_opsi:
-                                factory_reset('inventory'); factory_reset('transactions'); factory_reset('import_logs')
-                                st.toast("Reset Total Berhasil!", icon="🚀")
-                                st.success("RESET TOTAL BERHASIL! Aplikasi kembali seperti baru.")
+                                factory_reset('inventory'); factory_reset('transactions'); factory_reset('import_logs'); st.toast("Reset Total Berhasil!", icon="🚀"); st.success("RESET TOTAL BERHASIL! Aplikasi kembali seperti baru.")
                             time.sleep(2); st.rerun()
                     else: st.error("PIN Salah!")
             st.markdown('</div>', unsafe_allow_html=True)
