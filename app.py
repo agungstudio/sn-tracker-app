@@ -1,8 +1,8 @@
 # ==========================================
-# APLIKASI: SN TRACKER PRO (V7.3 Layout Fix)
+# APLIKASI: SN TRACKER PRO (V7.4 Separate Tabs)
 # ENGINE: Supabase (PostgreSQL)
-# UPDATE: Memindahkan Danger Zone ke sebelah kanan
-# menu Backup Database (Side-by-Side Layout)
+# UPDATE: Danger Zone dipindah ke Tab Menu terpisah
+# (sebelah menu Database) agar lebih aman & rapi.
 # ==========================================
 
 import streamlit as st
@@ -108,12 +108,10 @@ st.markdown("""
     .admin-card-blue {
         padding: 20px; border: 1px solid #0095DA; background-color: rgba(0, 149, 218, 0.05);
         border-radius: 10px; margin-bottom: 15px; color: var(--text-color);
-        height: 100%; /* Agar tinggi sama */
     }
     .admin-card-red {
         padding: 20px; border: 1px solid #ff4b4b; background-color: rgba(255, 75, 75, 0.05);
         border-radius: 10px; margin-bottom: 15px; color: var(--text-color);
-        height: 100%; /* Agar tinggi sama */
     }
     .admin-header { font-weight: 700; font-size: 18px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
     
@@ -279,7 +277,7 @@ def login_page():
     with c2:
         with st.container(border=True):
             st.markdown("<h1 style='text-align:center; color:#0095DA;'>SN <span style='color:#F99D1C;'>TRACKER</span></h1>", unsafe_allow_html=True)
-            st.caption("v7.3 Admin Layout Fix", unsafe_allow_html=True)
+            st.caption("v7.4 Separate Tabs", unsafe_allow_html=True)
             with st.form("lgn"):
                 u = st.text_input("Username"); p = st.text_input("Password", type="password")
                 if st.form_submit_button("LOGIN", use_container_width=True, type="primary"):
@@ -505,14 +503,18 @@ elif menu == "🔧 Admin Tools":
     if st.session_state.user_role == "ADMIN":
         st.title("🔧 Admin Tools")
         df_master = get_inventory_df() 
-        tab1, tab2 = st.tabs(["📊 Ringkasan", "💾 Database"])
+        # MENU UTAMA ADMIN TOOLS (TAB)
+        # Tab 1: Ringkasan, Tab 2: Database (Backup), Tab 3: Danger Zone
+        tabs = st.tabs(["📊 Ringkasan", "💾 Database", "🔥 Danger Zone"])
         
-        with tab1:
+        # TAB 1: RINGKASAN
+        with tabs[0]:
             df_hist = get_history_df()
             if not df_hist.empty:
                 m1, m2 = st.columns(2)
                 m1.metric("Omzet Total", format_rp(df_hist['total_bill'].sum()))
                 m2.metric("Total Transaksi", len(df_hist))
+                
                 st.divider()
                 st.subheader("🕵️‍♀️ Cek Detail Transaksi")
                 trx_options = df_hist['trx_id'].tolist()
@@ -539,73 +541,76 @@ elif menu == "🔧 Admin Tools":
                 st.dataframe(df_hist[['trx_id', 'timestamp', 'user', 'total_bill']], use_container_width=True)
             else: st.info("Belum ada transaksi")
 
-        with tab2:
-            col_backup, col_danger = st.columns(2)
-            with col_backup:
-                st.markdown('<div class="admin-card-blue"><div class="admin-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
-                if st.button("DOWNLOAD DATABASE LENGKAP (.xlsx)", use_container_width=True):
-                    if not df_master.empty or not df_hist.empty:
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                            if not df_master.empty:
-                                df_stok_clean = df_master.copy()
-                                for col in df_stok_clean.columns:
-                                    if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
-                                        df_stok_clean[col] = df_stok_clean[col].astype(str)
-                                format_excel(writer, df_stok_clean, 'Stok Gudang')
-                            if not df_hist.empty:
-                                df_hist_clean = df_hist.copy()
-                                if 'timestamp' in df_hist_clean.columns:
-                                    df_hist_clean['waktu_lokal'] = pd.to_datetime(df_hist_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
-                                else: df_hist_clean['waktu_lokal'] = "-"
-                                cols_target = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
-                                for c in cols_target:
-                                    if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
-                                format_excel(writer, df_hist_clean[cols_target], 'Riwayat Transaksi')
-                        st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
-                        st.toast("File Backup Siap!", icon="📂")
-                    else: st.warning("Data kosong.")
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("DOWNLOAD FORMAT SO (.xlsx)", use_container_width=True):
-                    if not df_master.empty:
-                        df_ready = df_master[df_master['status'] == 'Ready'].copy()
-                        if not df_ready.empty:
-                            df_so = df_ready.groupby(['brand', 'sku']).size().reset_index(name='Quantity')
-                            df_so['Owner'] = 'Konsinyasi'
-                            df_so['Jenis'] = 'Stok'
-                            df_so = df_so[['brand', 'sku', 'Owner', 'Jenis', 'Quantity']]
-                            df_so.columns = ['Brand', 'SKU', 'Owner', 'Jenis', 'Quantity']
-                            buffer_so = io.BytesIO()
-                            with pd.ExcelWriter(buffer_so, engine='xlsxwriter') as writer:
-                                format_excel(writer, df_so, 'Data Stock Opname')
-                            st.download_button(label="Klik disini untuk Simpan File SO", data=buffer.getvalue(), file_name=f"Format_SO_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_so_btn")
-                            st.toast("File SO Siap!", icon="📋")
-                        else: st.warning("Tidak ada stok Ready.")
-                    else: st.warning("Data Master Kosong.")
-                st.markdown('</div>', unsafe_allow_html=True)
+        # TAB 2: DATABASE (BACKUP)
+        with tabs[1]:
+            st.markdown('<div class="admin-card-blue"><div class="admin-header">📥 Backup Data</div><p>Simpan data secara berkala ke Excel untuk arsip pribadi.</p>', unsafe_allow_html=True)
+            
+            # Tombol 1: Backup Lengkap (Stok + History)
+            if st.button("DOWNLOAD DATABASE LENGKAP (.xlsx)", use_container_width=True):
+                if not df_master.empty or not df_hist.empty:
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        if not df_master.empty:
+                            df_stok_clean = df_master.copy()
+                            for col in df_stok_clean.columns:
+                                if pd.api.types.is_datetime64_any_dtype(df_stok_clean[col]):
+                                    df_stok_clean[col] = df_stok_clean[col].astype(str)
+                            format_excel(writer, df_stok_clean, 'Stok Gudang')
+                        if not df_hist.empty:
+                            df_hist_clean = df_hist.copy()
+                            if 'timestamp' in df_hist_clean.columns:
+                                df_hist_clean['waktu_lokal'] = pd.to_datetime(df_hist_clean['timestamp']).dt.tz_convert('Asia/Jakarta').astype(str)
+                            else: df_hist_clean['waktu_lokal'] = "-"
+                            cols_target = ['trx_id', 'waktu_lokal', 'user', 'total_bill', 'items_count']
+                            for c in cols_target:
+                                if c not in df_hist_clean.columns: df_hist_clean[c] = "-"
+                            format_excel(writer, df_hist_clean[cols_target], 'Riwayat Transaksi')
+                    st.download_button(label="Klik disini untuk Simpan File", data=buffer.getvalue(), file_name=f"Backup_Toko_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_btn")
+                    st.toast("File Backup Siap!", icon="📂")
+                else: st.warning("Data kosong.")
+            
+            # Tombol 2: Backup Format SO
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("DOWNLOAD FORMAT SO (.xlsx)", use_container_width=True):
+                if not df_master.empty:
+                    df_ready = df_master[df_master['status'] == 'Ready'].copy()
+                    if not df_ready.empty:
+                        df_so = df_ready.groupby(['brand', 'sku']).size().reset_index(name='Quantity')
+                        df_so['Owner'] = 'Konsinyasi'
+                        df_so['Jenis'] = 'Stok'
+                        df_so = df_so[['brand', 'sku', 'Owner', 'Jenis', 'Quantity']]
+                        df_so.columns = ['Brand', 'SKU', 'Owner', 'Jenis', 'Quantity']
+                        buffer_so = io.BytesIO()
+                        with pd.ExcelWriter(buffer_so, engine='xlsxwriter') as writer:
+                            format_excel(writer, df_so, 'Data Stock Opname')
+                        st.download_button(label="Klik disini untuk Simpan File SO", data=buffer_so.getvalue(), file_name=f"Format_SO_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel", key="dl_so_btn")
+                        st.toast("File SO Siap!", icon="📋")
+                    else: st.warning("Tidak ada stok Ready.")
+                else: st.warning("Data Master Kosong.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            with col_danger:
-                st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
-                hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
-                if hapus_opsi != "-- Pilih Tindakan --":
-                    st.warning(f"Anda akan melakukan: {hapus_opsi}")
-                    pin_konfirm = st.text_input("Masukkan PIN Konfirmasi:", type="password")
-                    if st.button("🔥 JALANKAN PENGHAPUSAN 🔥", type="primary", use_container_width=True):
-                        if pin_konfirm == "123456":
-                            with st.spinner("Sedang menghapus..."):
-                                if "1." in hapus_opsi:
-                                    factory_reset('transactions')
-                                    st.toast("Riwayat Transaksi Dihapus!", icon="🗑️")
-                                    st.success("Riwayat Transaksi Telah Dihapus.")
-                                elif "2." in hapus_opsi:
-                                    factory_reset('inventory')
-                                    st.toast("Stok Dihapus!", icon="🗑️")
-                                    st.success("Stok Barang Telah Dikosongkan.")
-                                elif "3." in hapus_opsi:
-                                    factory_reset('inventory'); factory_reset('transactions'); factory_reset('import_logs')
-                                    st.toast("Reset Total Berhasil!", icon="🚀")
-                                    st.success("RESET TOTAL BERHASIL! Aplikasi kembali seperti baru.")
-                                time.sleep(2); st.rerun()
-                        else: st.error("PIN Salah!")
-                st.markdown('</div>', unsafe_allow_html=True)
+        # TAB 3: DANGER ZONE (HAPUS)
+        with tabs[2]:
+            st.markdown('<div class="admin-card-red"><div class="admin-header" style="color:#dc2626">⚠️ Danger Zone</div><p>Hapus data permanen. Hati-hati!</p>', unsafe_allow_html=True)
+            hapus_opsi = st.radio("Pilih Data yang akan dihapus:", ["-- Pilih Tindakan --", "1. Hapus Riwayat Transaksi Saja", "2. Hapus Stok Barang Saja", "3. RESET PABRIK (Semua Data)"])
+            if hapus_opsi != "-- Pilih Tindakan --":
+                st.warning(f"Anda akan melakukan: {hapus_opsi}")
+                pin_konfirm = st.text_input("Masukkan PIN Konfirmasi:", type="password")
+                if st.button("🔥 JALANKAN PENGHAPUSAN 🔥", type="primary", use_container_width=True):
+                    if pin_konfirm == "123456":
+                        with st.spinner("Sedang menghapus..."):
+                            if "1." in hapus_opsi:
+                                factory_reset('transactions')
+                                st.toast("Riwayat Transaksi Dihapus!", icon="🗑️")
+                                st.success("Riwayat Transaksi Telah Dihapus.")
+                            elif "2." in hapus_opsi:
+                                factory_reset('inventory')
+                                st.toast("Stok Dihapus!", icon="🗑️")
+                                st.success("Stok Barang Telah Dikosongkan.")
+                            elif "3." in hapus_opsi:
+                                factory_reset('inventory'); factory_reset('transactions'); factory_reset('import_logs')
+                                st.toast("Reset Total Berhasil!", icon="🚀")
+                                st.success("RESET TOTAL BERHASIL! Aplikasi kembali seperti baru.")
+                            time.sleep(2); st.rerun()
+                    else: st.error("PIN Salah!")
+            st.markdown('</div>', unsafe_allow_html=True)
